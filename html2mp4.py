@@ -756,7 +756,7 @@ def render(html_path, args):
             # Certaines animations (dont EditPro – Vidéo 60 s) restent immobiles
             # tant que leur bouton de démarrage n'a pas reçu une vraie action pointeur.
             try:
-                target = cdp.ev(r"(() => {
+                target = cdp.ev(r"""(() => {
                     const nodes = [...document.querySelectorAll(
                       'button,[role=' + '"button"' + '],input[type=button],input[type=submit],a[role=' + '"button"' + ']'
                     )];
@@ -772,7 +772,7 @@ def render(html_path, args):
                     const chosen = visible.find(x => /(d[eé]marrer|start|lancer|commencer|lire avec|play|▶|▷)/i.test(x.label)) || visible[0];
                     return chosen ? {x: chosen.r.x + chosen.r.width/2,
                       y: chosen.r.y + chosen.r.height/2, label: chosen.label.slice(0, 100)} : null;
-                })()", await_promise=False)
+                })()""", await_promise=False)
                 if target:
                     # CDP pointer events produisent une activation navigateur réelle,
                     # contrairement à HTMLElement.click() pour l'audio protégé par autoplay.
@@ -789,7 +789,7 @@ def render(html_path, args):
                                 started = cdp.ev(r"(() => {
                                   const ui = document.querySelector('#ui');
                                   return !!(ui && getComputedStyle(ui).display === 'none');
-                                })()", await_promise=False)
+                                })()""", await_promise=False)
                                 if started:
                                     break
                             except RuntimeError:
