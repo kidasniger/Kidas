@@ -48,6 +48,7 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertTrue((fixtures / "canvas-animation.html").is_file())
         self.assertTrue((fixtures / "webaudio.html").is_file())
         self.assertTrue((fixtures / "static.html").is_file())
+        self.assertTrue((fixtures / "start-button.html").is_file())
 
 
 if __name__ == "__main__":
