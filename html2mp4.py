@@ -668,12 +668,13 @@ def render(html_path, args):
         info(f"Fenêtre {W}×{H} · analyse HTML · mode candidat : {'synchronisé' if patched else 'universel'}")
 
         chrome = find_chrome()
+        viewport_height = H + 300 if precise_candidate else H
         info("Démarrage de Chromium…")
-        proc, port = launch_chrome(chrome, tmp, W, H)
+        proc, port = launch_chrome(chrome, tmp, W, viewport_height)
         cdp = CDP(page_ws_url(port))
         cdp.call("Page.enable")
         cdp.call("Runtime.enable")
-        cdp.call("Emulation.setDeviceMetricsOverride", width=W, height=H, deviceScaleFactor=1, mobile=False)
+        cdp.call("Emulation.setDeviceMetricsOverride", width=W, height=viewport_height, deviceScaleFactor=1, mobile=False)
         cdp.call("Page.navigate", url=page.as_uri())
 
         info("Chargement du document HTML…")
