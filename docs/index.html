@@ -178,7 +178,7 @@ async function go() {
   try {
     status('Envoi du fichier…');
     await gh(`/contents/uploads/${id}.html`, { method: 'PUT',
-      body: JSON.stringify({ message: 'Import ' + id, content: toB64(await f.arrayBuffer()), branch: BRANCH }) });
+      body: JSON.stringify({ message: 'Import ' + id, content: toB64(await f.arrayBuffer()), branch: 'uploads' }) });
     status('Lancement du rendu…');
     await sleep(2500);
     await gh('/actions/workflows/render.yml/dispatches', { method: 'POST',

@@ -36,11 +36,19 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Récupérer le fichier importé
+        env:
+          FICHIER: ${{ inputs.fichier }}
+        run: |
+          if [ ! -f "$FICHIER" ]; then
+            git fetch --depth=1 origin uploads
+            git checkout FETCH_HEAD -- "$FICHIER"
+          fi
+
       - name: Installer FFmpeg et les dépendances
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-          pip install websocket-client
+          command -v ffmpeg >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; }
+          pip install -q websocket-client
 
       - name: Rendre la vidéo
         env:
