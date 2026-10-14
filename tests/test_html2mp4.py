@@ -24,6 +24,18 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertEqual(renderer.choose_frame_size(sample, "square"), (1080, 1080))
         self.assertEqual(renderer.choose_frame_size(sample, "auto"), (720, 1280))
 
+    def test_duration_selection_prefers_detection_and_respects_limit(self):
+        self.assertEqual(renderer.choose_duration(42, 0, 60), (42.0, "détection automatique"))
+        self.assertEqual(renderer.choose_duration(42, 20, 60), (20.0, "détection automatique avec limite"))
+        self.assertEqual(renderer.choose_duration(0, 20, 60), (20.0, "durée choisie"))
+        self.assertEqual(renderer.choose_duration(0, 0, 120), (120.0, "durée de secours"))
+
+    def test_duration_detector_covers_runtime_media_and_animations(self):
+        self.assertIn("document.querySelectorAll('audio,video')", renderer.DURATION_DETECT_JS)
+        self.assertIn("document.getAnimations", renderer.DURATION_DETECT_JS)
+        self.assertIn("data-duration", renderer.DURATION_DETECT_JS)
+        self.assertTrue(hasattr(renderer, "GENERIC_READY_JS"))
+
     def test_relative_asset_base_is_injected(self):
         html = "<html><head></head><body><img src='assets/pic.png'></body></html>"
         result = renderer.inject_base_url(html, "file:///tmp/source/")
@@ -51,6 +63,7 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertTrue((fixtures / "webaudio.html").is_file())
         self.assertTrue((fixtures / "static.html").is_file())
         self.assertTrue((fixtures / "start-button.html").is_file())
+        self.assertTrue((fixtures / "duration-detected.html").is_file())
 
     # --- vérification automatique du fichier ---
     EDITPRO = ('<html><body><div id="stage"></div><script>const IM={"voice":"' + "QUJD" * 400 + '"};'
