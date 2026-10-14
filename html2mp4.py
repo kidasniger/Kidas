@@ -359,6 +359,7 @@ def detect_profile(text):
     Vérifie le fichier avant tout rendu. Retourne (profil, libellé) avec profil dans :
       kidas   : React + audio intégré (KIDAS Vidéo v2, KIDAS motion design 9:16)
       editpro : canvas + fonction render(t) + voix intégrée (EditPro – Vidéo 60 s)
+      voicevideo : React + <audio> intégré + window.__video.seek(t)
       generic : autre page HTML (rendu universel en temps réel, synchro non garantie)
       invalid : ce n'est pas une page HTML exploitable
     """
@@ -380,6 +381,16 @@ def detect_profile(text):
     )
     if editpro:
         return "editpro", "EditPro (canvas + voix intégrée)"
+    # Pages « vidéo React » : piste <audio> intégrée + API window.__video (seek/duration)
+    # qui pilotent l'animation depuis l'horloge de l'audio.
+    voicevideo = (
+        "window.__video" in text
+        and bool(re.search(r"\bseek\s*\(", text))
+        and bool(re.search(r"<audio\b[^>]*\ssrc=[\"']data:audio/", text, re.I))
+        and bool(re.search(r"\bDUR\s*=", text))
+    )
+    if voicevideo:
+        return "voicevideo", "Vidéo React (audio intégré + window.__video)"
     return "generic", "Page HTML générique (mode universel)"
 
 
@@ -398,6 +409,11 @@ def patch_html(text):
         a = "(function loop(){let t="
         text = text.replace(a, "(function loop(){if(window.__manual)return;let t=", 1)
         return text, "editpro"
+    if profile == "voicevideo":
+        # La boucle de la page ne doit plus relire l'horloge de l'audio, et l'audio ne doit pas démarrer seul.
+        text = text.replace("const loop = () => { if (!au.paused)", "const loop = () => { if (!window.__manual && !au.paused)", 1)
+        text = text.replace("function go() { if (!au.paused) return;", "function go() { if (window.__manual || !au.paused) return;", 1)
+        return text, "voicevideo"
     return text, ""
 
 
@@ -419,6 +435,13 @@ def extract_audio(text, tmp, profile="kidas"):
             p.write_bytes(base64.b64decode(m.group(1)))
             out["voice"] = p
         return out
+    if profile == "voicevideo":
+        tags = re.findall(r"<audio\b[^>]*\ssrc=[\"']data:audio/([a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)[\"']", text, re.I)
+        for key, (mime, b64) in zip(("voice", "music"), tags):
+            p = tmp / f"{key}.{MIME_EXT.get(mime.lower(), 'mp3')}"
+            p.write_bytes(base64.b64decode(b64))
+            out[key] = p
+        return out
     for key, var in (("voice", "AUD"), ("music", "MUS")):
         m = re.search(var + r"='data:audio/([a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)'", text)
         if not m:
@@ -435,6 +458,9 @@ def extract_audio(text, tmp, profile="kidas"):
 
 def detect_stage_size(text):
     m = re.search(r"[.#]stage\{[^}]*?width:(\d+)px;height:(\d+)px", text)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    m = re.search(r"\bW\s*=\s*(\d{3,4})\s*,\s*H\s*=\s*(\d{3,4})\b", text)  # const W = 1080, H = 1920
     return (int(m.group(1)), int(m.group(2))) if m else (1080, 1920)
 
 
@@ -467,6 +493,16 @@ window.__seek = async (t) => {
     }
     render(Math.max(0, t));
     await window.__finish();
+    return 1;
+  }
+  if (window.__profile === 'voicevideo') {
+    window.__manual = true;
+    document.querySelectorAll('audio').forEach(a => { try { a.pause(); } catch (e) {} });
+    if (window.ReactDOM && ReactDOM.flushSync) ReactDOM.flushSync(() => window.__video.seek(t));
+    else { window.__video.seek(t); await window.__raf(); }
+    await window.__finish();
+    for (const b of document.querySelectorAll('#stage button'))
+      if (/Touchez pour lancer|Rejouer/.test(b.textContent) && b.parentElement) b.parentElement.style.display = 'none';
     return 1;
   }
   if (window.__setT && window.ReactDOM && ReactDOM.flushSync) {
@@ -539,7 +575,8 @@ def start_encoder(out_path, fps, dur, audio_inputs, err_path):
                 filters.extend([f"atrim=start={offset:.3f}", "asetpts=PTS-STARTPTS"])
             elif offset < -0.001:
                 filters.extend([f"adelay={int(round(-offset * 1000))}:all=1", "asetpts=PTS-STARTPTS"])
-            filters.extend([f"volume={vol}", "apad", f"atrim=duration={dur:.3f}"])
+            filters.extend(["aresample=48000:async=1:first_pts=0",
+                            f"volume={vol}", "apad", f"atrim=duration={dur:.3f}"])
             parts.append(f"[{i + 1}:a]{','.join(filters)}[a{i}]")
         if n == 1:
             parts.append("[a0]alimiter=limit=0.95[a]")
@@ -552,8 +589,9 @@ def start_encoder(out_path, fps, dur, audio_inputs, err_path):
 
     vcodec = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18"] if has_encoder("libx264") else ["-c:v", "mpeg4", "-q:v", "2"]
     cmd += ["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"] + vcodec + ["-pix_fmt", "yuv420p", "-r", str(fps)]
+    cmd += ["-vsync", "cfr"]
     if n:
-        cmd += ["-c:a", "aac", "-b:a", "192k"]
+        cmd += ["-c:a", "aac", "-b:a", "192k", "-ar", "48000"]
     cmd += ["-t", f"{dur:.3f}", "-movflags", "+faststart", str(out_path)]
     return subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=open(err_path, "wb"))
 
@@ -561,6 +599,32 @@ def start_encoder(out_path, fps, dur, audio_inputs, err_path):
 # ----------------------------------------------------------------------------
 # Rendu
 # ----------------------------------------------------------------------------
+def verify_sync(path, fps, dur):
+    """Compare durées vidéo/audio et durée attendue avec ffprobe."""
+    if not shutil.which("ffprobe"):
+        return
+
+    def probe(sel):
+        r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", sel,
+                            "-show_entries", "stream=duration", "-of", "csv=p=0", str(path)],
+                           capture_output=True, text=True)
+        try:
+            return float(r.stdout.strip().split("\n")[0])
+        except ValueError:
+            return None
+
+    v, a = probe("v:0"), probe("a:0")
+    if v is None:
+        warn("Vérification impossible : pas de piste vidéo lisible.")
+        return
+    if a is not None and abs(v - a) > 1.5 / fps:
+        warn(f"Écart durée vidéo/audio : {abs(v - a) * 1000:.0f} ms (vidéo {v:.2f}s, audio {a:.2f}s).")
+    elif a is not None:
+        good(f"Synchro vérifiée : vidéo {v:.2f}s · audio {a:.2f}s.")
+    if abs(v - dur) > 2.0 / fps:
+        warn(f"Durée finale {v:.2f}s au lieu de {dur:.2f}s attendues.")
+
+
 def unique_path(p):
     if not p.exists():
         return p
@@ -733,7 +797,7 @@ def render(html_path, args):
             die(label)
         info(f"Fichier vérifié : {label}")
         text, profile = patch_html(text)
-        precise_candidate = profile in ("kidas", "editpro")
+        precise_candidate = profile in ("kidas", "editpro", "voicevideo")
         W, H = choose_frame_size(text, "auto" if precise_candidate else args.format)
         page = tmp / "page.html"
         text = inject_base_url(text, html_path.parent.resolve().as_uri().rstrip("/") + "/")
@@ -776,6 +840,8 @@ def render(html_path, args):
         if precise_candidate:
             if profile == "kidas":
                 check = "(()=>!!document.querySelector('.stage')&&document.querySelectorAll('audio').length>=1&&typeof D==='number'&&typeof window.__setT==='function')()"
+            elif profile == "voicevideo":
+                check = "(()=>!!document.querySelector('#stage')&&!!window.__video&&typeof window.__video.seek==='function'&&document.querySelectorAll('audio').length>=1)()"
             else:
                 check = "(()=>!!document.querySelector('#stage')&&typeof render==='function'&&typeof IM==='object')()"
             t1 = time.time()
@@ -794,7 +860,12 @@ def render(html_path, args):
             cdp.ev(f"window.__profile = {json.dumps(profile)}; 0", await_promise=False)
             cdp.ev(JS_HELPERS, await_promise=False)
             cdp.ev("window.__prep()")
-            total = float(cdp.ev("D")) if profile == "kidas" else editpro_duration(text)
+            if profile == "kidas":
+                total = float(cdp.ev("D"))
+            elif profile == "voicevideo":
+                total = float(cdp.ev("window.__video.duration"))
+            else:
+                total = editpro_duration(text)
             dur = min(total, args.duration) if args.duration > 0 else total
             if args.test > 0:
                 dur = min(dur, args.test)
@@ -913,14 +984,23 @@ def render(html_path, args):
         info(f"Rendu en cours ({mode})…")
         start = time.monotonic()
         slow_frames = 0
-        for i in range(n_frames):
+        frame_ts = []  # mode universel : instant réel (s) de chaque capture
+        i = -1
+        while True:
+            i += 1
             if is_precise:
+                if i >= n_frames:
+                    break
                 cdp.ev(f"window.__seek({i / fps:.5f})")
             else:
-                target = start + i / fps
-                delay = target - time.monotonic()
+                # Mode universel : on capture jusqu'à ce que le TEMPS RÉEL atteigne la durée,
+                # puis on remet les images à cadence constante (voir plus bas).
+                delay = start + i / fps - time.monotonic()
                 if delay > 0:
                     time.sleep(delay)
+                if time.monotonic() - start >= dur:
+                    break
+                frame_ts.append(time.monotonic() - start)
             shot = cdp.call("Page.captureScreenshot", format="jpeg", quality=90, clip=clip)
             jpeg = base64.b64decode(shot["data"])
             if is_precise:
@@ -936,8 +1016,11 @@ def render(html_path, args):
                 slow_frames += 1
             if i % max(1, fps // 2) == 0 or i == n_frames - 1:
                 elapsed = time.monotonic() - start
-                eta = elapsed / (i + 1) * (n_frames - i - 1)
-                sys.stdout.write(f"\r  {i + 1}/{n_frames}  {100 * (i + 1) / n_frames:5.1f}%  reste ≈ {fmt_time(eta)}   ")
+                if is_precise:
+                    eta = elapsed / (i + 1) * (n_frames - i - 1)
+                    sys.stdout.write(f"\r  {i + 1}/{n_frames}  {100 * (i + 1) / n_frames:5.1f}%  reste ≈ {fmt_time(eta)}   ")
+                else:
+                    sys.stdout.write(f"\r  {min(elapsed, dur):.1f}/{dur:.1f} s  {i + 1} captures   ")
                 sys.stdout.flush()
         print()
 
@@ -954,18 +1037,29 @@ def render(html_path, args):
             except Exception as e:  # noqa: BLE001
                 warn(f"Impossible de récupérer la piste audio du navigateur : {e}")
             if slow_frames:
-                warn(f"{slow_frames}/{n_frames} images ont dépassé l'intervalle cible ; une animation très complexe peut être accélérée dans la vidéo.")
+                warn(f"{slow_frames}/{len(frame_files)} captures plus lentes que {fps} i/s : la chronologie reste exacte "
+                     "(images répétées pour combler), mais l'animation sera moins fluide. "
+                     "Essaie --fps 15 ou --scale 0.5. Pour une fluidité parfaite, la page doit exposer un mode image par image.")
 
         if not is_precise:
             info("Assemblage des images et de l'audio…")
             enc = start_encoder(out_tmp, fps, n_frames / fps, audio_inputs, err_path)
-            for idx, frame_path in enumerate(frame_files):
-                try:
-                    enc.stdin.write(frame_path.read_bytes())
-                except BrokenPipeError:
-                    break
-                if idx % max(1, fps * 5) == 0 or idx == len(frame_files) - 1:
-                    sys.stdout.write(f"\r  Assemblage {idx + 1}/{len(frame_files)}")
+            # Remise à cadence constante : pour chaque instant k/fps on écrit la dernière image
+            # réellement capturée avant cet instant. Image et audio restent ainsi sur la même horloge.
+            j = 0
+            last_data, last_idx = None, -1
+            for k in range(n_frames):
+                while j + 1 < len(frame_files) and frame_ts[j + 1] <= k / fps:
+                    j += 1
+                if frame_files:
+                    if last_data is None or last_idx != j:
+                        last_data, last_idx = frame_files[j].read_bytes(), j
+                    try:
+                        enc.stdin.write(last_data)
+                    except BrokenPipeError:
+                        break
+                if k % max(1, fps * 5) == 0 or k == n_frames - 1:
+                    sys.stdout.write(f"\r  Assemblage {k + 1}/{n_frames}")
                     sys.stdout.flush()
             print()
 
@@ -978,6 +1072,7 @@ def render(html_path, args):
             die("FFmpeg a échoué :\n" + err_path.read_text(errors="ignore")[-1000:])
 
         shutil.move(str(out_tmp), str(out_final))
+        verify_sync(out_final, fps, n_frames / fps)
         good(f"Terminé en {fmt_time(time.monotonic() - start)} → {out_final}")
         return out_final
     finally:
