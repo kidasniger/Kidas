@@ -599,7 +599,8 @@ def ask_fallback_duration(default=60):
     choices = (10, 30, 60, 120, 300)
     if not sys.stdin.isatty():
         return float(default)
-    print("\\nDurée introuvable automatiquement.")
+    print()
+    print("Durée introuvable automatiquement.")
     print("Choisis une durée de secours : " +
           " / ".join(f"{v} s" for v in choices) + f" (défaut {int(default)} s).")
     while True:
@@ -802,6 +803,28 @@ def choose_frame_size(text, fmt):
 
 
 
+
+GENERIC_READY_JS = r"""(async () => {
+  const wait = promise => Promise.race([
+    Promise.resolve(promise).catch(() => null),
+    new Promise(resolve => setTimeout(resolve, 10000))
+  ]);
+  try { if (document.fonts && document.fonts.ready) await wait(document.fonts.ready); } catch (_) {}
+  const images = [...document.images].map(img => img.decode ? img.decode().catch(() => null) : Promise.resolve());
+  await wait(Promise.all(images));
+  const media = [...document.querySelectorAll('audio,video')];
+  await wait(Promise.all(media.map(el => el.readyState >= 1 ? Promise.resolve() :
+    new Promise(resolve => {
+      const done = () => resolve();
+      el.addEventListener('loadedmetadata', done, {once: true});
+      el.addEventListener('error', done, {once: true});
+      setTimeout(done, 10000);
+    }))));
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  return {images: images.length, media: media.length, ready: true};
+})()"""
+
+
 # Estimation faite dans Chromium après chargement : durée explicite, médias et animations finies.
 DURATION_DETECT_JS = r"""(() => {
   const explicit = [];
@@ -941,6 +964,11 @@ def render(html_path, args):
             clip = {"x": round(r[0]), "y": round(r[1]), "width": W, "height": H, "scale": args.scale}
             mode = "synchronisé"
         else:
+            # Attend polices, images et métadonnées audio/vidéo avant d'estimer la durée.
+            try:
+                cdp.ev(GENERIC_READY_JS)
+            except Exception as e:  # noqa: BLE001
+                warn(f"Certaines ressources n'ont pas fini de charger : {e}")
             # Détecte la durée dans Chromium, puis demande un secours si nécessaire.
             try:
                 detected = cdp.ev(DURATION_DETECT_JS, await_promise=False) or {}
