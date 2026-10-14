@@ -459,17 +459,26 @@ def write_wav(path, pcm_bytes, sr=44100):
 # FFmpeg
 # ----------------------------------------------------------------------------
 def start_encoder(out_path, fps, dur, audio_inputs, err_path):
-    """audio_inputs : liste de (Path, volume). Retourne le process ffmpeg (stdin = flux JPEG)."""
+    """audio_inputs : (Path, volume[, offset]) ; offset aligne la piste sur la première image."""
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
            "-f", "image2pipe", "-framerate", str(fps), "-c:v", "mjpeg", "-i", "-"]
-    for p, _ in audio_inputs:
+    for item in audio_inputs:
+        p, _ = item[:2]
         cmd += ["-i", str(p)]
 
     n = len(audio_inputs)
     if n:
         parts = []
-        for i, (_, vol) in enumerate(audio_inputs):
-            parts.append(f"[{i + 1}:a]volume={vol},apad,atrim=0:{dur:.3f}[a{i}]")
+        for i, item in enumerate(audio_inputs):
+            _, vol, *extra = item
+            offset = float(extra[0]) if extra else 0.0
+            filters = []
+            if offset > 0.001:
+                filters.extend([f"atrim=start={offset:.3f}", "asetpts=PTS-STARTPTS"])
+            elif offset < -0.001:
+                filters.extend([f"adelay={int(round(-offset * 1000))}:all=1", "asetpts=PTS-STARTPTS"])
+            filters.extend([f"volume={vol}", "apad", f"atrim=duration={dur:.3f}"])
+            parts.append(f"[{i + 1}:a]{','.join(filters)}[a{i}]")
         if n == 1:
             parts.append("[a0]alimiter=limit=0.95[a]")
         else:
@@ -560,6 +569,7 @@ GENERIC_AUDIO_CAPTURE = r"""<script>
       ctx.__h2mRec = rec;
       rec.ondataavailable = e => { if (e.data && e.data.size) ctx.__h2mChunks.push(e.data); };
       rec.start(250);
+      ctx.__h2mRecStartPerf = performance.now();
     } catch (_) {}
   }
   window.__h2mStart = async () => {
@@ -606,7 +616,12 @@ GENERIC_AUDIO_CAPTURE = r"""<script>
           reader.onerror = () => resolve('');
           reader.readAsDataURL(blob);
         });
-        if (data) result.push({ mime: blob.type || 'audio/webm', data });
+        if (data) result.push({
+          mime: blob.type || 'audio/webm',
+          data,
+          offset: window.__h2mVideoStartPerf == null ? 0 :
+            (window.__h2mVideoStartPerf - (ctx.__h2mRecStartPerf || window.__h2mVideoStartPerf)) / 1000
+        });
       } catch (_) {}
     }
     return result;
@@ -813,6 +828,12 @@ def render(html_path, args):
         if is_precise:
             enc = start_encoder(out_tmp, fps, n_frames / fps, audio_inputs, err_path)
 
+        if not is_precise:
+            # Référence de temps commune navigateur/FFmpeg pour aligner l'audio WebAudio.
+            try:
+                cdp.ev("window.__h2mVideoStartPerf = performance.now(); true", await_promise=False)
+            except Exception:  # noqa: BLE001
+                pass
         info(f"Rendu en cours ({mode})…")
         start = time.monotonic()
         slow_frames = 0
@@ -851,7 +872,7 @@ def render(html_path, args):
                     p = tmp / f"browser-audio-{idx}.webm"
                     p.write_bytes(base64.b64decode(item["data"]))
                     if p.stat().st_size > 500:
-                        audio_inputs.append((p, 1.0))
+                        audio_inputs.append((p, 1.0, float(item.get("offset", 0.0))))
                 if audio_inputs:
                     warn("Les pistes audio génériques sont incluses ; vérifie la synchronisation et les sons spécifiques de la page.")
             except Exception as e:  # noqa: BLE001
