@@ -63,16 +63,16 @@ li{margin:4px 0}
       <option value="landscape">Paysage · 16:9</option>
       <option value="square">Carré · 1:1</option>
     </select>
-    <label for="duration">Durée maximale</label>
+    <label for="duration">Durée maximale / durée de secours</label>
     <select id="duration">
-      <option value="0">Automatique (ou 60 s si inconnue)</option>
+      <option value="0">Détection automatique</option>
       <option value="10">10 secondes</option>
       <option value="30">30 secondes</option>
       <option value="60">60 secondes</option>
       <option value="120">120 secondes</option>
       <option value="300">5 minutes</option>
     </select>
-    <small>Le fichier est vérifié avant l’import. KIDAS et EditPro sont rendus image par image avec leur son ; la durée et le format choisis ne servent que pour les autres pages (mode universel).</small>
+    <small id="durationHelp">La durée est détectée automatiquement. Si le fichier ne contient aucune durée exploitable, choisis ici une durée de secours.</small>
     <button id="go" type="button">Générer la vidéo</button>
   </section>
 
@@ -187,17 +187,58 @@ async function loadList() {
 
 /* Vérification du fichier avant tout import (mêmes règles que html2mp4.py) */
 let verdict = null;
+function estimateDuration(t) {
+  const candidates = [];
+  const addMatches = (pattern, index = 1) => {
+    for (const m of t.matchAll(pattern)) {
+      const n = Number(m[index]);
+      if (Number.isFinite(n) && n >= 0.25 && n <= 3600) candidates.push(n);
+    }
+  };
+  addMatches(/window\.__duration\s*=\s*(\d+(?:\.\d+)?)/gi);
+  addMatches(/\b(?:const|let|var)\s+(?:DURATION|TOTAL_DURATION|totalDuration|videoDuration|durationSeconds)\s*=\s*(\d+(?:\.\d+)?)/g);
+  if (t.includes('const [t,setT]=useState(0),') && /\bAUD\s*=\s*'data:audio\//.test(t))
+    addMatches(/\bD\s*=\s*(\d+(?:\.\d+)?)/g);
+  if (t.includes('function render(t)'))
+    addMatches(/if\s*\(\s*t\s*>=\s*(\d+(?:\.\d+)?)\s*\)\s*\{\s*t\s*=/g);
+
+  const infinite = /animation-iteration-count\s*:\s*infinite|animation\s*:[^;{}]*\binfinite\b/i.test(t);
+  if (!infinite) {
+    for (const declaration of t.matchAll(/animation-duration\s*:\s*([^;}]+)/gi)) {
+      for (const m of declaration[1].matchAll(/(\d+(?:\.\d+)?)\s*(ms|s)\b/gi)) {
+        const n = Number(m[1]) / (m[2].toLowerCase() === 'ms' ? 1000 : 1);
+        if (n >= 0.25 && n <= 3600) candidates.push(n);
+      }
+    }
+    for (const declaration of t.matchAll(/animation\s*:\s*([^;}]+)/gi)) {
+      const times = [...declaration[1].matchAll(/(?<![\w.])(\d+(?:\.\d+)?)\s*(ms|s)\b/gi)];
+      if (!times.length || /\binfinite\b/i.test(declaration[1])) continue;
+      const values = times.map(m => Number(m[1]) / (m[2].toLowerCase() === 'ms' ? 1000 : 1));
+      const total = values.length > 1 ? values[0] + values[1] : values[0];
+      if (total >= 0.25 && total <= 3600) candidates.push(total);
+    }
+  }
+  return {
+    seconds: candidates.length ? Math.max(...candidates) : null,
+    hasMedia: /<(?:audio|video)\b/i.test(t)
+  };
+}
+
 function analyze(t) {
   const count = (s, sub) => s.split(sub).length - 1;
   if (t.trim().length < 20 || !/<(?:!doctype|html|head|body|script|svg|canvas|div|style)\b/i.test(t))
     return { kind: 'invalid', label: 'Ce fichier ne ressemble pas à une page HTML.' };
+  const timing = estimateDuration(t);
   const kidas = count(t, 'const [t,setT]=useState(0),') === 1 && /[.#]stage\s*\{/.test(t)
     && /\bAUD\s*=\s*'data:audio\//.test(t) && /\bD\s*=\s*\d/.test(t);
-  if (kidas) return { kind: 'kidas', label: 'KIDAS (React + audio intégré)' };
+  if (kidas) return { kind: 'kidas', label: 'KIDAS (React + audio intégré)', ...timing };
   const editpro = t.includes('function render(t)') && count(t, '(function loop(){let t=') === 1
     && t.includes('const IM=') && /"voice"\s*:\s*"[A-Za-z0-9+\/=]{1000,}"/.test(t);
-  if (editpro) return { kind: 'editpro', label: 'EditPro (canvas + voix intégrée)' };
-  return { kind: 'generic', label: 'Page HTML générique' };
+  if (editpro) return { kind: 'editpro', label: 'EditPro (canvas + voix intégrée)', ...timing };
+  return {
+    kind: 'generic', label: 'Page HTML générique', ...timing,
+    durationUnknown: !timing.seconds && !timing.hasMedia
+  };
 }
 function showVerdict(v, cls, msg) {
   verdict = v; const e = $('#verdict'); e.hidden = !msg; e.textContent = msg || ''; e.className = cls || 'mut';
@@ -209,17 +250,28 @@ async function checkFile() {
   showVerdict(null, 'mut', 'Vérification du fichier…');
   let v;
   try { v = analyze(await f.text()); } catch (e) { v = { kind: 'invalid', label: 'Lecture du fichier impossible.' }; }
-  if (v.kind === 'invalid') showVerdict(v, 'err', '✗ ' + v.label + ' Import bloqué.');
-  else if (v.kind === 'generic') showVerdict(v, 'warn', '⚠ Fichier non reconnu : rendu universel en temps réel. La durée, la synchronisation et le son ne sont pas garantis.');
-  else showVerdict(v, 'ok', '✓ Fichier reconnu : ' + v.label + '. Rendu image par image avec le son.');
+  if (v.kind === 'invalid') {
+    showVerdict(v, 'err', '✗ ' + v.label + ' Import bloqué.');
+  } else if (v.kind === 'generic' && v.durationUnknown) {
+    showVerdict(v, 'warn', '⚠ Durée exacte introuvable dans le fichier. Choisis une durée de secours ci-dessous avant le rendu. Pour un aperçu, le mode « Aperçu rapide » utilise 10 secondes.');
+  } else if (v.kind === 'generic' && !v.seconds && v.hasMedia) {
+    showVerdict(v, 'warn', '⚠ Le fichier contient un média : Kidas essaiera de lire sa durée après chargement. Si elle reste inconnue, choisis une durée de secours.');
+  } else if (v.kind === 'generic') {
+    const timing = v.seconds ? ' Durée repérée dans le HTML : environ ' + v.seconds + ' s.' : '';
+    showVerdict(v, 'warn', '⚠ Format HTML générique : capture horodatée pour préserver le rythme réel.' + timing + ' Certains scripts propriétaires peuvent nécessiter une durée choisie.');
+  } else {
+    const timing = v.seconds ? ' Durée trouvée dans le code : environ ' + v.seconds + ' s.' : '';
+    showVerdict(v, 'ok', '✓ Fichier reconnu : ' + v.label + '. Rendu image par image avec audio extrait.' + timing);
+  }
 }
-
 async function go() {
   const f = $('#file').files[0];
   if (!token) return status('Ajoute d’abord ton jeton GitHub.', 'err');
   if (!f) return status('Choisis un fichier HTML.', 'err');
   if (!verdict) await checkFile();
   if (!verdict || verdict.kind === 'invalid') return status('Fichier refusé : il n’a pas été importé.', 'err');
+  if (verdict.kind === 'generic' && verdict.durationUnknown && $('#duration').value === '0' && $('#mode').value !== 'test')
+    return status('Durée inconnue : choisis 10, 30, 60, 120 secondes ou 5 minutes, puis relance le rendu.', 'err');
   const m = MODES[$('#mode').value];
   const id = 'v' + Date.now().toString(36);
   $('#go').disabled = true; $('#res').textContent = '';
@@ -244,6 +296,7 @@ async function go() {
 $('#tokSave').onclick = () => { const v = $('#tok').value; if (v.trim()) { saveToken(v); $('#tok').value = ''; } };
 $('#tokDel').onclick = () => saveToken('');
 $('#file').onchange = checkFile;
+$('#duration').onchange = () => { if ($('#file').files[0]) checkFile(); };
 $('#go').onclick = go;
 renderToken();
 loadList();
