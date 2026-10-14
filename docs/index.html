@@ -55,6 +55,23 @@ li{margin:4px 0}
       <option value="half">Vidéo complète allégée · 540×960</option>
       <option value="test">Aperçu rapide · 10 s · 540×960</option>
     </select>
+    <label for="format">Format de la vidéo</label>
+    <select id="format">
+      <option value="auto">Automatique (détecter la scène)</option>
+      <option value="portrait">Portrait · 9:16</option>
+      <option value="landscape">Paysage · 16:9</option>
+      <option value="square">Carré · 1:1</option>
+    </select>
+    <label for="duration">Durée maximale</label>
+    <select id="duration">
+      <option value="0">Automatique (ou 60 s si inconnue)</option>
+      <option value="10">10 secondes</option>
+      <option value="30">30 secondes</option>
+      <option value="60">60 secondes</option>
+      <option value="120">120 secondes</option>
+      <option value="300">5 minutes</option>
+    </select>
+    <small>Les pages HTML sans durée déclarée utilisent la durée choisie. Les animations KIDAS gardent leur synchronisation native.</small>
     <button id="go" type="button">Générer la vidéo</button>
   </section>
 
@@ -71,7 +88,7 @@ li{margin:4px 0}
 </main>
 
 <script>
-const OWNER = 'kidasniger', REPO = 'Kidas', BRANCH = 'main';
+const OWNER = 'kidasniger', REPO = 'Kidas', BRANCH = 'main', UPLOAD_BRANCH = 'video-uploads';
 const API = `https://api.github.com/repos/${OWNER}/${REPO}`;
 const MODES = {
   full: { scale: '1',   test: '0'  },
@@ -178,11 +195,11 @@ async function go() {
   try {
     status('Envoi du fichier…');
     await gh(`/contents/uploads/${id}.html`, { method: 'PUT',
-      body: JSON.stringify({ message: 'Import ' + id, content: toB64(await f.arrayBuffer()), branch: BRANCH }) });
+      body: JSON.stringify({ message: 'Import ' + id, content: toB64(await f.arrayBuffer()), branch: UPLOAD_BRANCH }) });
     status('Lancement du rendu…');
     await sleep(2500);
     await gh('/actions/workflows/render.yml/dispatches', { method: 'POST',
-      body: JSON.stringify({ ref: BRANCH, inputs: { fichier: `uploads/${id}.html`, fps: '30', scale: m.scale, test: m.test, tag: id } }) });
+      body: JSON.stringify({ ref: BRANCH, inputs: { fichier: `uploads/${id}.html`, fps: '30', scale: m.scale, test: m.test, duration: $('#duration').value, format: $('#format').value, tag: id } }) });
     const rel = await waitRelease(id);
     showResult(rel);
     status('Terminé ✓', 'ok');
