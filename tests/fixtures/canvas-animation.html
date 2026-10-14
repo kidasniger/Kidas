@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#171717}canvas{display:block;width:100vw;height:100vh}</style></head>
+<body><canvas id="c"></canvas><script>
+const c=document.getElementById('c'),x=c.getContext('2d');function draw(t){c.width=innerWidth*devicePixelRatio;c.height=innerHeight*devicePixelRatio;x.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);x.clearRect(0,0,innerWidth,innerHeight);x.fillStyle='#f0b34d';x.beginPath();x.arc(innerWidth/2+Math.sin(t/400)*innerWidth*.3,innerHeight/2,55,0,Math.PI*2);x.fill();requestAnimationFrame(draw)}requestAnimationFrame(draw);
+</script></body></html>
