@@ -18,9 +18,20 @@ on:
         description: "Secondes à rendre (0 = vidéo entière)"
         default: "0"
       duration:
-        description: "Durée maximale en secondes (0 = durée détectée, sinon 60 s en mode universel)"
+        description: "Durée maximale en secondes (0 = détection automatique)"
         required: false
         default: "0"
+      fallback_duration:
+        description: "Durée de secours si aucune durée n'est détectée"
+        type: choice
+        options:
+          - "10"
+          - "30"
+          - "60"
+          - "120"
+          - "300"
+        required: false
+        default: "60"
       format:
         description: "Format de sortie"
         type: choice
@@ -83,8 +94,9 @@ jobs:
           SCALE: ${{ inputs.scale }}
           TEST: ${{ inputs.test }}
           DURATION: ${{ inputs.duration }}
+          FALLBACK_DURATION: ${{ inputs.fallback_duration }}
           FORMAT: ${{ inputs.format }}
-        run: python html2mp4.py --file "$FICHIER" --fps "$FPS" --scale "$SCALE" --test "$TEST" --duration "$DURATION" --format "$FORMAT"
+        run: python html2mp4.py --file "$FICHIER" --fps "$FPS" --scale "$SCALE" --test "$TEST" --duration "$DURATION" --fallback-duration "$FALLBACK_DURATION" --format "$FORMAT"
 
       - name: Publier le MP4 (artefact)
         uses: actions/upload-artifact@v4
