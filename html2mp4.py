@@ -616,6 +616,17 @@ GENERIC_AUDIO_CAPTURE = r"""<script>
 </script>"""
 
 
+def inject_base_url(text, base_url):
+    """Conserve les chemins relatifs des images, scripts et médias du HTML original."""
+    if re.search(r"<base\b", text, flags=re.I):
+        return text
+    tag = f'<base href="{base_url}">'
+    m = re.search(r"<head\b[^>]*>", text, flags=re.I)
+    if m:
+        return text[:m.end()] + tag + text[m.end():]
+    return tag + text
+
+
 def inject_generic_audio_capture(text):
     """Installe l'enregistrement Web Audio avant les scripts de la page."""
     if re.search(r"__h2mCaptureInstalled", text):
@@ -644,6 +655,7 @@ def render(html_path, args):
         precise_candidate = patched and bool(re.search(r"\.stage\s*\{", text))
         W, H = choose_frame_size(text, "auto" if patched else args.format)
         page = tmp / "page.html"
+        text = inject_base_url(text, html_path.parent.resolve().as_uri().rstrip("/") + "/")
         if not patched:
             text = inject_generic_audio_capture(text)
         page.write_text(text, encoding="utf-8")
