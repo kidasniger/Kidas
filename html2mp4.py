@@ -849,6 +849,7 @@ def render(html_path, args):
             subprocess.call(["termux-wake-lock"])
 
         text = html_path.read_text(encoding="utf-8", errors="ignore")
+        source_text = text
         source_has_audio = bool(re.search(
             r"<(?:audio|video)\b|AudioContext|webkitAudioContext|createOscillator|createMediaElementSource",
             text, re.I
@@ -953,7 +954,12 @@ def render(html_path, args):
             mode = "synchronisé"
         else:
             # Détection de durée : code source, médias et animations finies du navigateur.
-            source_duration = detect_html_duration(text) or 0.0
+            source_duration = detect_html_duration(source_text) or 0.0
+            source_dynamic_clock = bool(re.search(
+                r"requestAnimationFrame|setTimeout|setInterval|AudioContext|createOscillator|"
+                r"<canvas\b|WebGL|gsap|lottie|framer.motion|three\.js|<script\b[^>]*\bsrc=",
+                source_text, re.I
+            ))
             browser_duration = {}
             try:
                 browser_duration = cdp.ev(r"""(async () => {
@@ -975,11 +981,6 @@ def render(html_path, args):
                   const animationDurations = (document.getAnimations ? document.getAnimations() : [])
                     .map(a => { try { return a.effect ? a.effect.getComputedTiming().endTime / 1000 : NaN; } catch (_) { return NaN; } })
                     .filter(valid);
-                  const inlineCode = [...document.scripts].map(s => s.textContent || '').join('\\n');
-                  const hasDynamicClock = /requestAnimationFrame|setTimeout|setInterval|AudioContext|createOscillator|WebGL|gsap|lottie|framer.motion|three\\.js/i.test(inlineCode)
-                    || !!document.querySelector('canvas') || typeof window.React !== 'undefined'
-                    || typeof window.gsap !== 'undefined' || typeof window.THREE !== 'undefined'
-                    || typeof window.lottie !== 'undefined';
                   const svgDurations = [...document.querySelectorAll('animate[dur],animateTransform[dur],set[dur]')]
                     .map(el => {
                       const m = (el.getAttribute('dur') || '').match(/^([\d.]+)(ms|s|min)$/);
@@ -992,13 +993,14 @@ def render(html_path, args):
                     }).filter(valid);
                   const max = xs => xs.length ? Math.max(...xs) : 0;
                   return {exposed:max(exposed), media:max(mediaDurations),
-                    animation:hasDynamicClock ? 0 : max(animationDurations), svg:max(svgDurations)};
+                    animation:max(animationDurations), svg:max(svgDurations)};
                 })()""");
             } catch (e) {
                 warn("La durée du navigateur n'a pas pu être lue : " + e);
             }
+            animation_duration = 0.0 if source_dynamic_clock else float(browser_duration.get("animation") or 0)
             const_durations = [source_duration, float(browser_duration.get("exposed") or 0),
-                float(browser_duration.get("media") or 0), float(browser_duration.get("animation") or 0),
+                float(browser_duration.get("media") or 0), animation_duration,
                 float(browser_duration.get("svg") or 0)]
             detected_duration = max(const_durations)
             if args.duration > 0:
