@@ -97,5 +97,27 @@ class Html2Mp4Tests(unittest.TestCase):
             self.assertAlmostEqual(renderer.extract_audio(text, Path(d), "kidas")["music_volume"], 0.22)
 
 
+    def test_detects_explicit_duration(self):
+        html = "<script>const totalDuration = 42;</script>"
+        self.assertEqual(renderer.detect_html_duration(html), 42.0)
+
+    def test_detects_finite_css_animation_duration(self):
+        html = "<style>.box{animation-duration: 2.5s}</style>"
+        self.assertEqual(renderer.detect_html_duration(html), 2.5)
+
+    def test_unknown_infinite_css_animation_requires_choice(self):
+        html = "<style>.box{animation: spin 2s linear infinite}</style>"
+        self.assertIsNone(renderer.detect_html_duration(html))
+
+    def test_cfr_frame_mapping_repeats_frames_without_compressing_time(self):
+        timestamps = [0.0, 0.1, 0.23]
+        self.assertEqual(renderer.cfr_frame_indices(timestamps, 10, 4), [0, 1, 1, 2])
+
+    def test_cfr_mapping_handles_no_capture(self):
+        self.assertEqual(renderer.cfr_frame_indices([], 30, 90), [])
+
+
+
+
 if __name__ == "__main__":
     unittest.main()

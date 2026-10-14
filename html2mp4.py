@@ -406,6 +406,75 @@ def editpro_duration(text):
     return float(m.group(1)) if m else 60.0
 
 
+def detect_html_duration(text):
+    """Détecte une durée explicite ou une animation CSS finie ; None si ambiguë."""
+    candidates = []
+    patterns = (
+        r"window\.__duration\s*=\s*(\d+(?:\.\d+)?)",
+        r"\b(?:const|let|var)\s+(?:duration|DURATION|TOTAL_DURATION|totalDuration|videoDuration|durationSeconds)\s*=\s*(\d+(?:\.\d+)?)",
+    )
+    for pattern in patterns:
+        candidates.extend(float(x) for x in re.findall(pattern, text, re.I))
+
+    # Une animation infinie ou une horloge JavaScript personnalisée ne définit
+    # pas à elle seule la durée totale du film.
+    infinite = bool(re.search(
+        r"animation-iteration-count\s*:\s*infinite|animation\s*:[^;{}]*\binfinite\b",
+        text, re.I
+    ))
+    dynamic_clock = bool(re.search(
+        r"requestAnimationFrame|setTimeout|setInterval|AudioContext|createOscillator|"
+        r"<canvas\b|WebGL|gsap|lottie|framer.motion|three\.js|<script\b[^>]*\bsrc=",
+        text, re.I
+    ))
+    if not infinite and not dynamic_clock:
+        for declaration in re.findall(r"animation-duration\s*:\s*([^;}]+)", text, re.I):
+            for value, unit in re.findall(r"(\d+(?:\.\d+)?)\s*(ms|s)\b", declaration, re.I):
+                seconds = float(value) / (1000 if unit.lower() == "ms" else 1)
+                if 0.25 <= seconds <= 3600:
+                    candidates.append(seconds)
+        for declaration in re.findall(r"animation\s*:\s*([^;}]+)", text, re.I):
+            times = re.findall(r"(?<![\w.])(\d+(?:\.\d+)?)\s*(ms|s)\b", declaration, re.I)
+            if times and "infinite" not in declaration.lower():
+                values = [float(v) / (1000 if u.lower() == "ms" else 1) for v, u in times]
+                value = sum(values[:2]) if len(values) >= 2 else values[0]
+                if 0.25 <= value <= 3600:
+                    candidates.append(value)
+
+    candidates = [x for x in candidates if 0.25 <= x <= 3600]
+    return max(candidates) if candidates else None
+
+
+def cfr_frame_indices(timestamps, fps, frame_count):
+    """Associe chaque instant CFR à la dernière image capturée avant cet instant."""
+    if not timestamps or fps <= 0 or frame_count <= 0:
+        return []
+    result = []
+    current = 0
+    for frame in range(frame_count):
+        instant = frame / fps
+        while current + 1 < len(timestamps) and timestamps[current + 1] <= instant:
+            current += 1
+        result.append(current)
+    return result
+
+
+def choose_fallback_duration():
+    """Demande une durée si le fichier et le navigateur n'en exposent aucune."""
+    if sys.stdin.isatty():
+        print("\nDurée exacte non détectée automatiquement.")
+        print("Choisis une durée de secours en secondes (10, 30, 60, 120, 300 ou une valeur personnalisée).")
+        raw = input("Durée en secondes [60] : ").strip() or "60"
+        try:
+            value = float(raw)
+        except ValueError:
+            die("Durée invalide. Relance avec --duration 60 (ou une autre durée).")
+        if not 0.25 <= value <= 3600:
+            die("La durée doit être comprise entre 0,25 et 3600 secondes.")
+        return value
+    die("Durée exacte impossible à détecter automatiquement. Choisis une durée dans l'interface Kidas, ou relance avec --duration 60 (10, 30, 60, 120 ou 300 secondes).")
+
+
 MIME_EXT = {"mpeg": "mp3", "mp3": "mp3", "wav": "wav", "x-wav": "wav", "ogg": "ogg", "mp4": "m4a", "aac": "aac", "webm": "webm"}
 
 
@@ -539,7 +608,7 @@ def start_encoder(out_path, fps, dur, audio_inputs, err_path):
                 filters.extend([f"atrim=start={offset:.3f}", "asetpts=PTS-STARTPTS"])
             elif offset < -0.001:
                 filters.extend([f"adelay={int(round(-offset * 1000))}:all=1", "asetpts=PTS-STARTPTS"])
-            filters.extend([f"volume={vol}", "apad", f"atrim=duration={dur:.3f}"])
+            filters.extend([f"volume={vol}", "apad", "aresample=async=1:first_pts=0", f"atrim=duration={dur:.3f}"])
             parts.append(f"[{i + 1}:a]{','.join(filters)}[a{i}]")
         if n == 1:
             parts.append("[a0]alimiter=limit=0.95[a]")
@@ -551,9 +620,10 @@ def start_encoder(out_path, fps, dur, audio_inputs, err_path):
         cmd += ["-map", "0:v"]
 
     vcodec = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18"] if has_encoder("libx264") else ["-c:v", "mpeg4", "-q:v", "2"]
-    cmd += ["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"] + vcodec + ["-pix_fmt", "yuv420p", "-r", str(fps)]
+    cmd += ["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"] + vcodec + ["-pix_fmt", "yuv420p", "-r", str(fps), "-fps_mode", "cfr"]
+    cmd += ["-frames:v", str(max(1, int(round(dur * fps))))]
     if n:
-        cmd += ["-c:a", "aac", "-b:a", "192k"]
+        cmd += ["-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2"]
     cmd += ["-t", f"{dur:.3f}", "-movflags", "+faststart", str(out_path)]
     return subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=open(err_path, "wb"))
 
@@ -561,6 +631,57 @@ def start_encoder(out_path, fps, dur, audio_inputs, err_path):
 # ----------------------------------------------------------------------------
 # Rendu
 # ----------------------------------------------------------------------------
+def verify_rendered_mp4(path, fps, expected_frames, expected_audio=False):
+    """Contrôle le nombre d'images, la durée et les pistes du MP4 produit."""
+    if not shutil.which("ffprobe"):
+        warn("ffprobe absent : vérification du MP4 ignorée.")
+        return
+    cmd = [
+        "ffprobe", "-v", "error", "-count_frames",
+        "-show_entries", "format=duration:stream=codec_type,duration,r_frame_rate,nb_read_frames,sample_rate,channels",
+        "-of", "json", str(path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode:
+        raise RuntimeError("Vérification ffprobe impossible : " + result.stderr[-500:])
+    try:
+        data = json.loads(result.stdout)
+        streams = data.get("streams", [])
+        video = next(x for x in streams if x.get("codec_type") == "video")
+    except (ValueError, StopIteration):
+        raise RuntimeError("Le MP4 généré ne contient pas de piste vidéo valide.")
+    audio = next((x for x in streams if x.get("codec_type") == "audio"), None)
+    actual_frames = int(video.get("nb_read_frames") or 0)
+    actual_duration = float(video.get("duration") or data.get("format", {}).get("duration") or 0)
+    expected_duration = expected_frames / fps
+    frame_tolerance = max(2 / fps, 0.08)
+    if actual_frames <= 0:
+        raise RuntimeError("Vérification MP4 : ffprobe n'a pas pu compter les images vidéo.")
+    if abs(actual_frames - expected_frames) > 1:
+        raise RuntimeError(f"Vérification MP4 : {actual_frames} images produites au lieu de {expected_frames}.")
+    if actual_duration and abs(actual_duration - expected_duration) > frame_tolerance:
+        raise RuntimeError(f"Vérification MP4 : durée vidéo {actual_duration:.3f} s, attendue {expected_duration:.3f} s.")
+    rate = video.get("r_frame_rate", "")
+    if rate:
+        try:
+            from fractions import Fraction
+            if abs(float(Fraction(rate)) - fps) > 0.01:
+                raise RuntimeError(f"Vérification MP4 : fréquence vidéo {rate}, attendue {fps} i/s.")
+        except (ValueError, ZeroDivisionError):
+            warn(f"Fréquence vidéo non interprétable par ffprobe : {rate}")
+    if expected_audio and audio is None:
+        raise RuntimeError("Vérification MP4 : une piste audio était attendue, mais elle est absente.")
+    if audio is not None:
+        audio_duration = float(audio.get("duration") or 0)
+        tolerance = max(1 / fps + 0.02, 0.05)
+        if audio_duration and actual_duration and abs(audio_duration - actual_duration) > tolerance:
+            raise RuntimeError(
+                f"Vérification MP4 : écart de durée audio/vidéo de {abs(audio_duration-actual_duration):.3f} s."
+            )
+    info(f"Vérification ffprobe OK · {actual_frames or expected_frames} images · {fps} i/s · {actual_duration:.3f} s"
+         + (" · audio présent" if audio is not None else " · sans audio"))
+
+
 def unique_path(p):
     if not p.exists():
         return p
@@ -728,6 +849,11 @@ def render(html_path, args):
             subprocess.call(["termux-wake-lock"])
 
         text = html_path.read_text(encoding="utf-8", errors="ignore")
+        source_text = text
+        source_has_audio = bool(re.search(
+            r"<(?:audio|video)\b|AudioContext|webkitAudioContext|createOscillator|createMediaElementSource",
+            text, re.I
+        ))
         profile, label = detect_profile(text)
         if profile == "invalid":
             die(label)
@@ -741,7 +867,7 @@ def render(html_path, args):
             text = inject_generic_audio_capture(text)
         page.write_text(text, encoding="utf-8")
         audio = extract_audio(text, tmp, profile) if precise_candidate else {"voice": None, "music": None, "music_volume": 0.2}
-        info(f"Fenêtre {W}×{H} · mode : {'image par image (synchronisé)' if precise_candidate else 'universel (temps réel, synchro non garantie)'}")
+        info(f"Fenêtre {W}×{H} · mode : {'image par image (synchronisé)' if precise_candidate else 'universel (captures horodatées, durée conservée)'}")
 
         chrome = find_chrome()
         viewport_height = H + 300 if precise_candidate else H
@@ -827,20 +953,74 @@ def render(html_path, args):
             clip = {"x": round(r[0]), "y": round(r[1]), "width": W, "height": H, "scale": args.scale}
             mode = "synchronisé"
         else:
-            # Mode générique : la page n'a besoin ni de .stage, ni de D, ni d'AUD/MUS.
+            # Détection de durée : code source, médias et animations finies du navigateur.
+            source_duration = detect_html_duration(source_text) or 0.0
+            source_dynamic_clock = bool(re.search(
+                r"requestAnimationFrame|setTimeout|setInterval|AudioContext|createOscillator|"
+                r"<canvas\b|WebGL|gsap|lottie|framer.motion|three\.js|<script\b[^>]*\bsrc=",
+                source_text, re.I
+            ))
+            browser_duration = {}
+            try:
+                browser_duration = cdp.ev(r"""(async () => {
+                  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+                  const media = [...document.querySelectorAll('audio,video')];
+                  await Promise.race([Promise.all(media.map(el => el.readyState >= 1 ? 1 :
+                    new Promise(resolve => {
+                      el.addEventListener('loadedmetadata', resolve, {once:true});
+                      el.addEventListener('error', resolve, {once:true});
+                    }))), wait(12000)]);
+                  try { await Promise.race([document.fonts.ready, wait(5000)]); } catch (_) {}
+                  const valid = value => typeof value === 'number' && Number.isFinite(value) && value >= 0.25 && value <= 3600;
+                  const exposed = [];
+                  for (const value of [window.__duration, window.DURATION, window.TOTAL_DURATION,
+                    window.totalDuration, window.videoDuration, window.duration]) if (valid(value)) exposed.push(value);
+                  try { if (typeof D !== 'undefined' && valid(Number(D))) exposed.push(Number(D)); } catch (_) {}
+                  try { if (typeof duration !== 'undefined' && valid(Number(duration))) exposed.push(Number(duration)); } catch (_) {}
+                  const mediaDurations = media.map(el => el.duration).filter(valid);
+                  const animationDurations = (document.getAnimations ? document.getAnimations() : [])
+                    .map(a => { try { return a.effect ? a.effect.getComputedTiming().endTime / 1000 : NaN; } catch (_) { return NaN; } })
+                    .filter(valid);
+                  const svgDurations = [...document.querySelectorAll('animate[dur],animateTransform[dur],set[dur]')]
+                    .map(el => {
+                      const m = (el.getAttribute('dur') || '').match(/^([\d.]+)(ms|s|min)$/);
+                      if (!m) return NaN;
+                      const unit = m[2], base = Number(m[1]);
+                      const factor = unit === 'ms' ? 0.001 : unit === 'min' ? 60 : 1;
+                      const repeat = el.getAttribute('repeatCount') || '1';
+                      if (repeat === 'indefinite') return NaN;
+                      return base * factor * Math.max(1, Number(repeat) || 1);
+                    }).filter(valid);
+                  const max = xs => xs.length ? Math.max(...xs) : 0;
+                  return {exposed:max(exposed), media:max(mediaDurations),
+                    animation:max(animationDurations), svg:max(svgDurations)};
+                })()""");
+            except Exception as e:  # noqa: BLE001
+                warn("La durée du navigateur n'a pas pu être lue : " + str(e))
+            animation_duration = 0.0 if source_dynamic_clock else float(browser_duration.get("animation") or 0)
+            const_durations = [source_duration, float(browser_duration.get("exposed") or 0),
+                float(browser_duration.get("media") or 0), animation_duration,
+                float(browser_duration.get("svg") or 0)]
+            detected_duration = max(const_durations)
             if args.duration > 0:
-                dur = args.duration
+                dur = min(detected_duration, args.duration) if detected_duration > 0 else args.duration
+                if detected_duration > 0:
+                    info(f"Durée détectée : {detected_duration:.2f} s (limite choisie : {args.duration:g} s)")
+                else:
+                    info(f"Durée de secours choisie : {dur:.2f} s")
+            elif detected_duration > 0:
+                dur = detected_duration
+                info(f"Durée détectée automatiquement : {dur:.2f} s")
+            elif args.test > 0:
+                dur = args.test
+                info(f"Aucune durée complète trouvée ; aperçu limité à {dur:.2f} s")
             else:
-                try:
-                    media_dur = cdp.ev("(()=>Math.max(0,...[...document.querySelectorAll('audio,video')].map(x=>x.duration).filter(x=>Number.isFinite(x)&&x>0)))()", await_promise=False)
-                except RuntimeError:
-                    media_dur = 0
-                dur = float(media_dur or 60.0)
+                dur = choose_fallback_duration()
             if args.test > 0:
                 dur = min(dur, args.test)
             fps = args.fps
             n_frames = max(1, int(round(dur * fps)))
-            info(f"Mode universel · durée {dur:.2f} s · {fps} i/s · capture de la fenêtre")
+            info(f"Mode universel · durée {dur:.2f} s · {fps} i/s · capture horodatée")
             clip = {"x": 0, "y": 0, "width": W, "height": H, "scale": args.scale}
             audio_inputs = []
             mode = "universel"
@@ -901,44 +1081,63 @@ def render(html_path, args):
         out_tmp = tmp / "out.mp4"
         err_path = tmp / "ffmpeg.log"
         frame_files = []
+        frame_timestamps = []
         if is_precise:
             enc = start_encoder(out_tmp, fps, n_frames / fps, audio_inputs, err_path)
 
         if not is_precise:
-            # Référence de temps commune navigateur/FFmpeg pour aligner l'audio WebAudio.
+            # Référence commune entre l'horloge navigateur et celle des captures.
             try:
                 cdp.ev("window.__h2mVideoStartPerf = performance.now(); true", await_promise=False)
             except Exception:  # noqa: BLE001
                 pass
         info(f"Rendu en cours ({mode})…")
         start = time.monotonic()
-        slow_frames = 0
-        for i in range(n_frames):
-            if is_precise:
+        if is_precise:
+            for i in range(n_frames):
                 cdp.ev(f"window.__seek({i / fps:.5f})")
-            else:
-                target = start + i / fps
-                delay = target - time.monotonic()
-                if delay > 0:
-                    time.sleep(delay)
-            shot = cdp.call("Page.captureScreenshot", format="jpeg", quality=90, clip=clip)
-            jpeg = base64.b64decode(shot["data"])
-            if is_precise:
+                shot = cdp.call("Page.captureScreenshot", format="jpeg", quality=90, clip=clip)
+                jpeg = base64.b64decode(shot["data"])
                 try:
                     enc.stdin.write(jpeg)
                 except BrokenPipeError:
                     break
-            else:
-                frame_path = tmp / f"frame-{i:06d}.jpg"
+                if i % max(1, fps // 2) == 0 or i == n_frames - 1:
+                    elapsed = time.monotonic() - start
+                    eta = elapsed / (i + 1) * (n_frames - i - 1)
+                    sys.stdout.write(f"\r  {i + 1}/{n_frames}  {100 * (i + 1) / n_frames:5.1f}%  reste ≈ {fmt_time(eta)}   ")
+                    sys.stdout.flush()
+        else:
+            # Capture au rythme réellement possible ; les trous seront comblés en CFR.
+            next_slot = 0
+            last_report = -1
+            while True:
+                target = start + next_slot / fps
+                delay = target - time.monotonic()
+                if delay > 0:
+                    time.sleep(delay)
+                capture_started = time.monotonic()
+                if capture_started >= start + dur:
+                    break
+                shot = cdp.call("Page.captureScreenshot", format="jpeg", quality=90, clip=clip)
+                capture_finished = time.monotonic()
+                jpeg = base64.b64decode(shot["data"])
+                frame_path = tmp / f"frame-{len(frame_files):06d}.jpg"
                 frame_path.write_bytes(jpeg)
                 frame_files.append(frame_path)
-            if not is_precise and time.monotonic() > start + (i + 1) / fps:
-                slow_frames += 1
-            if i % max(1, fps // 2) == 0 or i == n_frames - 1:
-                elapsed = time.monotonic() - start
-                eta = elapsed / (i + 1) * (n_frames - i - 1)
-                sys.stdout.write(f"\r  {i + 1}/{n_frames}  {100 * (i + 1) / n_frames:5.1f}%  reste ≈ {fmt_time(eta)}   ")
-                sys.stdout.flush()
+                frame_timestamps.append(max(0.0, capture_started - start))
+                next_slot = max(next_slot + 1, int((capture_finished - start) * fps) + 1)
+                elapsed = min(dur, capture_finished - start)
+                percent = int(elapsed * 100 / dur)
+                if percent != last_report and (percent % 5 == 0 or percent == 100):
+                    sys.stdout.write(f"\r  Capture {percent:3d}% · {len(frame_files)} images")
+                    sys.stdout.flush()
+                    last_report = percent
+            if not frame_files:
+                raise RuntimeError("Aucune image n'a pu être capturée.")
+            print()
+            if len(frame_files) < n_frames:
+                warn(f"{len(frame_files)} captures pour {n_frames} images de sortie : les images manquantes seront répétées pour préserver la durée.")
         print()
 
         if not is_precise:
@@ -950,22 +1149,28 @@ def render(html_path, args):
                     if p.stat().st_size > 500:
                         audio_inputs.append((p, 1.0, float(item.get("offset", 0.0))))
                 if audio_inputs:
-                    warn("Les pistes audio génériques sont incluses ; vérifie la synchronisation et les sons spécifiques de la page.")
+                    warn("Les pistes audio génériques sont incluses. Les sons produits hors des médias HTML/Web Audio interceptés peuvent ne pas être capturés.")
             except Exception as e:  # noqa: BLE001
                 warn(f"Impossible de récupérer la piste audio du navigateur : {e}")
-            if slow_frames:
-                warn(f"{slow_frames}/{n_frames} images ont dépassé l'intervalle cible ; une animation très complexe peut être accélérée dans la vidéo.")
+            if frame_files and len(frame_files) < n_frames:
+                info(f"Chronologie préservée : répétition des images jusqu'à {n_frames} images CFR.")
 
         if not is_precise:
             info("Assemblage des images et de l'audio…")
             enc = start_encoder(out_tmp, fps, n_frames / fps, audio_inputs, err_path)
-            for idx, frame_path in enumerate(frame_files):
+            indices = cfr_frame_indices(frame_timestamps, fps, n_frames)
+            current_index = 0
+            current_bytes = frame_files[0].read_bytes()
+            for idx, capture_index in enumerate(indices):
+                if capture_index != current_index:
+                    current_index = capture_index
+                    current_bytes = frame_files[current_index].read_bytes()
                 try:
-                    enc.stdin.write(frame_path.read_bytes())
+                    enc.stdin.write(current_bytes)
                 except BrokenPipeError:
                     break
-                if idx % max(1, fps * 5) == 0 or idx == len(frame_files) - 1:
-                    sys.stdout.write(f"\r  Assemblage {idx + 1}/{len(frame_files)}")
+                if idx % max(1, fps * 5) == 0 or idx == n_frames - 1:
+                    sys.stdout.write(f"\r  Assemblage CFR {idx + 1}/{n_frames}")
                     sys.stdout.flush()
             print()
 
@@ -977,6 +1182,7 @@ def render(html_path, args):
         if enc.returncode != 0 or not out_tmp.exists():
             die("FFmpeg a échoué :\n" + err_path.read_text(errors="ignore")[-1000:])
 
+        verify_rendered_mp4(out_tmp, fps, n_frames, expected_audio=(bool(audio_inputs) or source_has_audio))
         shutil.move(str(out_tmp), str(out_final))
         good(f"Terminé en {fmt_time(time.monotonic() - start)} → {out_final}")
         return out_final
@@ -1002,7 +1208,7 @@ def main():
     ap.add_argument("--fps", type=int, default=30, help="images par seconde (défaut 30)")
     ap.add_argument("--scale", type=float, default=1.0, help="échelle de sortie, ex. 0.5 = 540×960 (défaut 1)")
     ap.add_argument("--test", type=float, default=0, help="ne rendre que les N premières secondes")
-    ap.add_argument("--duration", type=float, default=0, help="durée maximale en secondes ; 0 = durée détectée ou 60 s en mode universel")
+    ap.add_argument("--duration", type=float, default=0, help="durée maximale en secondes ; 0 = détection automatique, demande si indéterminée")
     ap.add_argument("--format", choices=("auto", "portrait", "landscape", "square"), default="auto", help="format de sortie : auto, portrait, paysage ou carré")
     args = ap.parse_args()
 
