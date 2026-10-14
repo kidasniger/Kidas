@@ -203,7 +203,7 @@ function estimateDuration(t) {
     addMatches(/if\s*\(\s*t\s*>=\s*(\d+(?:\.\d+)?)\s*\)\s*\{\s*t\s*=/g);
 
   const infinite = /animation-iteration-count\s*:\s*infinite|animation\s*:[^;{}]*\binfinite\b/i.test(t);
-  const dynamicClock = /requestAnimationFrame|setTimeout|setInterval|AudioContext|createOscillator|<canvas\b|WebGL|gsap|lottie|framer.motion|three\.js/i.test(t);
+  const dynamicClock = /requestAnimationFrame|setTimeout|setInterval|AudioContext|createOscillator|<canvas\b|WebGL|gsap|lottie|framer.motion|three\.js|<script\b[^>]*\bsrc=/i.test(t);
   if (!infinite && !dynamicClock) {
     for (const declaration of t.matchAll(/animation-duration\s*:\s*([^;}]+)/gi)) {
       for (const m of declaration[1].matchAll(/(\d+(?:\.\d+)?)\s*(ms|s)\b/gi)) {
