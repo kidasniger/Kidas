@@ -63,16 +63,24 @@ li{margin:4px 0}
       <option value="landscape">Paysage · 16:9</option>
       <option value="square">Carré · 1:1</option>
     </select>
-    <label for="duration">Durée maximale</label>
+    <label for="duration">Limite de durée (facultative)</label>
     <select id="duration">
-      <option value="0">Automatique (ou 60 s si inconnue)</option>
-      <option value="10">10 secondes</option>
-      <option value="30">30 secondes</option>
-      <option value="60">60 secondes</option>
-      <option value="120">120 secondes</option>
-      <option value="300">5 minutes</option>
+      <option value="0">Automatique : durée détectée complète</option>
+      <option value="10">Maximum 10 secondes</option>
+      <option value="30">Maximum 30 secondes</option>
+      <option value="60">Maximum 60 secondes</option>
+      <option value="120">Maximum 120 secondes</option>
+      <option value="300">Maximum 5 minutes</option>
     </select>
-    <small>Le fichier est vérifié avant l’import. KIDAS et EditPro sont rendus image par image avec leur son ; la durée et le format choisis ne servent que pour les autres pages (mode universel).</small>
+    <label for="fallbackDuration">Si la durée est introuvable</label>
+    <select id="fallbackDuration">
+      <option value="10">Choisir 10 secondes</option>
+      <option value="30">Choisir 30 secondes</option>
+      <option value="60" selected>Choisir 60 secondes (défaut)</option>
+      <option value="120">Choisir 120 secondes</option>
+      <option value="300">Choisir 5 minutes</option>
+    </select>
+    <small>La durée est détectée automatiquement à partir des durées déclarées, des médias et des animations finies. Si aucune durée fiable n’est trouvée, ce choix sert de secours. Les pages génériques sont capturées en temps réel : les images lentes sont répétées pour préserver la durée au lieu d’accélérer la vidéo.</small>
     <button id="go" type="button">Générer la vidéo</button>
   </section>
 
@@ -187,17 +195,32 @@ async function loadList() {
 
 /* Vérification du fichier avant tout import (mêmes règles que html2mp4.py) */
 let verdict = null;
+function guessDuration(t) {
+  const patterns = [
+    /(?:window\.)?__duration\s*=\s*["']?([0-9]+(?:\.[0-9]+)?)/gi,
+    /\b(?:const|let|var)\s+D\s*=\s*([0-9]+(?:\.[0-9]+)?)/g,
+    /\bD\s*=\s*([0-9]+(?:\.[0-9]+)?)/g,
+    /data-duration\s*=\s*["']?([0-9]+(?:\.[0-9]+)?)/gi
+  ];
+  const values = [];
+  for (const re of patterns) for (const m of t.matchAll(re)) {
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n > 0 && n <= 3600) values.push(n);
+  }
+  return values.length ? Math.max(...values) : null;
+}
 function analyze(t) {
   const count = (s, sub) => s.split(sub).length - 1;
   if (t.trim().length < 20 || !/<(?:!doctype|html|head|body|script|svg|canvas|div|style)\b/i.test(t))
-    return { kind: 'invalid', label: 'Ce fichier ne ressemble pas à une page HTML.' };
+    return { kind: 'invalid', label: 'Ce fichier ne ressemble pas à une page HTML.', duration: null };
+  const duration = guessDuration(t);
   const kidas = count(t, 'const [t,setT]=useState(0),') === 1 && /[.#]stage\s*\{/.test(t)
     && /\bAUD\s*=\s*'data:audio\//.test(t) && /\bD\s*=\s*\d/.test(t);
-  if (kidas) return { kind: 'kidas', label: 'KIDAS (React + audio intégré)' };
+  if (kidas) return { kind: 'kidas', label: 'KIDAS (React + audio intégré)', duration };
   const editpro = t.includes('function render(t)') && count(t, '(function loop(){let t=') === 1
     && t.includes('const IM=') && /"voice"\s*:\s*"[A-Za-z0-9+\/=]{1000,}"/.test(t);
-  if (editpro) return { kind: 'editpro', label: 'EditPro (canvas + voix intégrée)' };
-  return { kind: 'generic', label: 'Page HTML générique' };
+  if (editpro) return { kind: 'editpro', label: 'EditPro (canvas + voix intégrée)', duration };
+  return { kind: 'generic', label: 'Page HTML générique', duration };
 }
 function showVerdict(v, cls, msg) {
   verdict = v; const e = $('#verdict'); e.hidden = !msg; e.textContent = msg || ''; e.className = cls || 'mut';
@@ -210,8 +233,13 @@ async function checkFile() {
   let v;
   try { v = analyze(await f.text()); } catch (e) { v = { kind: 'invalid', label: 'Lecture du fichier impossible.' }; }
   if (v.kind === 'invalid') showVerdict(v, 'err', '✗ ' + v.label + ' Import bloqué.');
-  else if (v.kind === 'generic') showVerdict(v, 'warn', '⚠ Fichier non reconnu : rendu universel en temps réel. La durée, la synchronisation et le son ne sont pas garantis.');
-  else showVerdict(v, 'ok', '✓ Fichier reconnu : ' + v.label + '. Rendu image par image avec le son.');
+  else if (v.kind === 'generic') {
+    const d = v.duration ? ' Durée estimée dans le code : ' + v.duration + ' s.' : ' Durée exacte non trouvée dans le code ; le moteur cherchera les durées des médias et animations au chargement.';
+    showVerdict(v, 'warn', '⚠ Page générique :' + d + ' Si aucune durée n’est détectée, la durée de secours sélectionnée sera utilisée. Les animations arbitraires ne peuvent pas toutes être rendues de façon déterministe.');
+  } else {
+    const d = v.duration ? ' Durée déclarée : ' + v.duration + ' s.' : '';
+    showVerdict(v, 'ok', '✓ Fichier reconnu : ' + v.label + '.' + d + ' Rendu spécialisé image par image.');
+  }
 }
 
 async function go() {
@@ -230,7 +258,7 @@ async function go() {
     status('Lancement du rendu…');
     await sleep(2500);
     await gh('/actions/workflows/render.yml/dispatches', { method: 'POST',
-      body: JSON.stringify({ ref: BRANCH, inputs: { fichier: `uploads/${id}.html`, fps: '30', scale: m.scale, test: m.test, duration: $('#duration').value, format: $('#format').value, tag: id } }) });
+      body: JSON.stringify({ ref: BRANCH, inputs: { fichier: `uploads/${id}.html`, fps: '30', scale: m.scale, test: m.test, duration: $('#duration').value, fallback_duration: $('#fallbackDuration').value, format: $('#format').value, tag: id } }) });
     const rel = await waitRelease(id);
     showResult(rel);
     status('Terminé ✓', 'ok');
