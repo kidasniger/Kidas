@@ -29,6 +29,12 @@ jobs:
           pip install websocket-client
       - name: Tests unitaires
         run: python -m unittest discover -s tests -v
+      - name: Vérifier la détection automatique de durée
+        run: |
+          set -e
+          python html2mp4.py --file tests/fixtures/duration-detected.html --fps 10 --scale 0.5 --fallback-duration 10 --format landscape
+          test -s tests/fixtures/duration-detected.mp4
+          python -c "import json,subprocess; p='tests/fixtures/duration-detected.mp4'; d=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-show_format','-of','json',p])); v=next(s for s in d['streams'] if s['codec_type']=='video'); assert abs(float(v['duration'])-2.0)<0.15, v"
       - name: Rendus de régression HTML/CSS/Canvas/Web Audio
         run: |
           set -e
