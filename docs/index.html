@@ -2,89 +2,162 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>HTML → MP4 · Kidas</title>
 <style>
-:root{--bg:#f4f6ff;--card:#fff;--tx:#0a1640;--mut:#5a6699;--ac:#2b59ff;--on:#fff;--ok:#12805c;--err:#c0392b;--bd:#d9def5;color-scheme:light}
-@media(prefers-color-scheme:dark){:root{--bg:#070f2e;--card:#0f1b4d;--tx:#f4f6ff;--mut:#9aa7d6;--ac:#6c8cff;--on:#070f2e;--ok:#4cd6a1;--err:#ff8a7a;--bd:#26357f;color-scheme:dark}}
+:root{--bg:#f4f6ff;--card:#fff;--tx:#0a1640;--mut:#5a6699;--ac:#2b59ff;--on:#fff;--ok:#12805c;--err:#c0392b;--warn:#a05a00;--bd:#d9def5;--soft:#eef1ff;color-scheme:light}
+@media(prefers-color-scheme:dark){:root{--bg:#070f2e;--card:#0f1b4d;--tx:#f4f6ff;--mut:#9aa7d6;--ac:#6c8cff;--on:#070f2e;--ok:#4cd6a1;--err:#ff8a7a;--warn:#ffc46b;--bd:#26357f;--soft:#14226a;color-scheme:dark}}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:560px;margin:0 auto;padding:20px 16px 60px}
-h1{font-size:1.4rem;margin:8px 0 2px}
-.sub{color:var(--mut);margin:0 0 18px;font-size:.92rem}
+main{max-width:600px;margin:0 auto;padding:max(20px,env(safe-area-inset-top)) 16px max(60px,env(safe-area-inset-bottom))}
+h1{font-size:1.45rem;margin:8px 0 2px}
+h2{font-size:1rem;margin:0 0 8px}
+.sub{color:var(--mut);margin:0 0 18px;font-size:.93rem}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:14px}
-label{display:block;font-weight:600;margin:10px 0 6px;font-size:.92rem}
-input[type=password],input[type=text],select,input[type=file]{width:100%;padding:10px;border:1px solid var(--bd);border-radius:10px;background:transparent;color:var(--tx);font:inherit}
-button{font:inherit;font-weight:700;border:0;border-radius:999px;padding:12px 20px;background:var(--ac);color:var(--on);width:100%;margin-top:14px}
-button.sec{background:transparent;color:var(--ac);border:1px solid var(--bd);width:auto;margin:0;padding:6px 14px}
-button:disabled{opacity:.5}
+label{display:block;font-weight:600;margin:12px 0 6px;font-size:.92rem}
+select,input[type=password],input[type=text]{width:100%;min-height:44px;padding:10px;border:1px solid var(--bd);border-radius:10px;background:transparent;color:var(--tx);font:inherit}
+button{font:inherit;font-weight:700;border:0;border-radius:999px;min-height:46px;padding:12px 20px;background:var(--ac);color:var(--on);width:100%;margin-top:14px;cursor:pointer}
+button.sec{background:transparent;color:var(--ac);border:1px solid var(--bd);width:auto;margin:0;padding:8px 16px;min-height:44px}
+button.danger{background:transparent;color:var(--err);border:1px solid var(--err)}
+button:disabled{opacity:.5;cursor:not-allowed}
 a{color:var(--ac)}
 small,.mut{color:var(--mut)}
-#st{font-weight:600;margin:0}
-#st.ok,#verdict.ok{color:var(--ok)}#st.err,#verdict.err{color:var(--err)}#verdict.warn{color:#b7791f}
-video{width:100%;max-height:70vh;border-radius:12px;background:#000;margin-top:10px}
-ul{padding-left:18px;margin:8px 0 0}
-li{margin:4px 0}
+:focus-visible{outline:3px solid var(--ac);outline-offset:2px}
 [hidden]{display:none!important}
+.row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+@media(max-width:420px){.grid{grid-template-columns:1fr}}
+
+/* zone de dépôt */
+.drop{display:block;position:relative;border:2px dashed var(--bd);border-radius:14px;padding:22px 14px;text-align:center;background:var(--soft);cursor:pointer;margin:0}
+.drop.over{border-color:var(--ac);background:transparent}
+.drop b{display:block;font-size:1rem}
+.drop input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.drop:focus-within{outline:3px solid var(--ac);outline-offset:2px}
+#fileinfo{margin:10px 0 0;font-weight:600;word-break:break-all}
+#verdict{margin:8px 0 0;font-size:.93rem}
+#verdict.ok{color:var(--ok)}#verdict.err{color:var(--err)}#verdict.warn{color:var(--warn)}
+iframe#prev{width:100%;height:380px;border:1px solid var(--bd);border-radius:12px;margin-top:10px;background:#000}
+
+/* étapes */
+ol.steps{list-style:none;padding:0;margin:0 0 10px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+ol.steps li{font-size:.76rem;text-align:center;color:var(--mut);border-top:4px solid var(--bd);padding-top:6px;margin:0}
+ol.steps li[data-s=active]{color:var(--tx);border-color:var(--ac);font-weight:700}
+ol.steps li[data-s=done]{color:var(--ok);border-color:var(--ok)}
+ol.steps li[data-s=err]{color:var(--err);border-color:var(--err);font-weight:700}
+#st{font-weight:600;margin:0}
+#st.ok{color:var(--ok)}#st.err{color:var(--err)}
+#hint{margin:6px 0 0;font-size:.9rem}
+video{width:100%;max-height:70vh;border-radius:12px;background:#000;margin-top:10px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.actions a,.actions button{flex:1 1 130px;text-align:center}
+.actions a.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:8px 16px;border-radius:999px;background:var(--ac);color:var(--on);font-weight:700;text-decoration:none}
+.actions button{margin:0}
+
+/* historique */
+ul#list{list-style:none;padding:0;margin:8px 0 0}
+ul#list li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--bd)}
+ul#list li:first-child{border-top:0}
+ul#list .meta{min-width:0}
+ul#list .meta a{font-weight:700;word-break:break-all}
+ul#list .meta small{display:block}
+ul#list button{width:auto;margin:0;min-height:44px;padding:8px 14px}
+.empty{text-align:center;color:var(--mut);padding:14px 0}
+progress{width:100%;height:8px;accent-color:var(--ac)}
 </style>
 </head>
 <body>
 <main>
   <h1>HTML → MP4</h1>
-  <p class="sub">Importe ton animation HTML, la vidéo est générée par GitHub.</p>
+  <p class="sub">Importe ton animation HTML : la vidéo (image + son) est générée par GitHub.</p>
 
-  <section class="card">
+  <section class="card" aria-label="Jeton GitHub">
     <div id="tokEdit">
-      <label for="tok">Jeton GitHub (une seule fois)</label>
+      <label for="tok" style="margin-top:0">Jeton GitHub (une seule fois)</label>
       <input id="tok" type="password" autocomplete="off" placeholder="github_pat_…">
-      <small>Reste dans ce navigateur. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Créer un jeton</a> limité au dépôt Kidas, avec <b>Contents</b> et <b>Actions</b> en lecture/écriture.</small>
+      <small>Il reste dans ce navigateur et n’est envoyé qu’à api.github.com. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Créer un jeton</a> limité au dépôt Kidas, avec <b>Contents</b> et <b>Actions</b> en lecture/écriture.</small>
       <button id="tokSave" type="button">Enregistrer le jeton</button>
     </div>
-    <div id="tokOk" hidden style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+    <div id="tokOk" class="row" hidden>
       <span>Jeton enregistré ✓</span>
       <button class="sec" id="tokDel" type="button">Changer</button>
     </div>
   </section>
 
-  <section class="card">
-    <label for="file">Fichier HTML</label>
-    <input id="file" type="file" accept=".html,.htm,text/html">
-    <p id="verdict" class="mut" style="margin:8px 0 0;font-size:.92rem" hidden></p>
-    <label for="mode">Qualité</label>
-    <select id="mode">
-      <option value="full">Vidéo complète · 1080×1920</option>
-      <option value="half">Vidéo complète allégée · 540×960</option>
-      <option value="test">Aperçu rapide · 10 s · 540×960</option>
-    </select>
-    <label for="format">Format de la vidéo</label>
-    <select id="format">
-      <option value="auto">Automatique (détecter la scène)</option>
-      <option value="portrait">Portrait · 9:16</option>
-      <option value="landscape">Paysage · 16:9</option>
-      <option value="square">Carré · 1:1</option>
-    </select>
-    <label for="duration">Durée maximale</label>
-    <select id="duration">
-      <option value="0">Automatique (ou 60 s si inconnue)</option>
-      <option value="10">10 secondes</option>
-      <option value="30">30 secondes</option>
-      <option value="60">60 secondes</option>
-      <option value="120">120 secondes</option>
-      <option value="300">5 minutes</option>
-    </select>
-    <small>Le fichier est vérifié avant l’import. KIDAS et EditPro sont rendus image par image avec leur son ; la durée et le format choisis ne servent que pour les autres pages (mode universel).</small>
-    <button id="go" type="button">Générer la vidéo</button>
+  <section class="card" aria-label="Fichier">
+    <h2>1. Ton fichier HTML</h2>
+    <label class="drop" id="drop">
+      <b>Dépose ton fichier ici</b>
+      <span class="mut">ou touche pour le choisir (.html, .htm · 50 Mo max)</span>
+      <input id="file" type="file" accept=".html,.htm,text/html" aria-label="Choisir un fichier HTML">
+    </label>
+    <p id="fileinfo" hidden></p>
+    <p id="verdict" role="status" hidden></p>
+    <button class="sec" id="prevBtn" type="button" style="margin-top:10px" hidden>Voir un aperçu</button>
+    <iframe id="prev" title="Aperçu du fichier HTML" sandbox="allow-scripts" hidden></iframe>
   </section>
 
-  <section class="card">
-    <p id="st" class="mut">Prêt.</p>
+  <section class="card" aria-label="Réglages">
+    <h2>2. Réglages</h2>
+    <div class="grid">
+      <div>
+        <label for="mode" style="margin-top:0">Qualité</label>
+        <select id="mode">
+          <option value="full">Complète · 1080×1920</option>
+          <option value="half">Allégée · 540×960</option>
+          <option value="test">Aperçu · 10 s · 540×960</option>
+        </select>
+      </div>
+      <div>
+        <label for="fps" style="margin-top:0">Images / seconde</label>
+        <select id="fps">
+          <option value="30">30 (fluide)</option>
+          <option value="24">24 (cinéma)</option>
+          <option value="15">15 (plus rapide)</option>
+        </select>
+      </div>
+      <div>
+        <label for="format">Format</label>
+        <select id="format">
+          <option value="auto">Automatique</option>
+          <option value="portrait">Portrait · 9:16</option>
+          <option value="landscape">Paysage · 16:9</option>
+          <option value="square">Carré · 1:1</option>
+        </select>
+      </div>
+      <div>
+        <label for="duration">Durée maximale</label>
+        <select id="duration">
+          <option value="0">Automatique</option>
+          <option value="10">10 secondes</option>
+          <option value="30">30 secondes</option>
+          <option value="60">60 secondes</option>
+          <option value="120">2 minutes</option>
+          <option value="300">5 minutes</option>
+        </select>
+      </div>
+    </div>
+    <small>Les fichiers reconnus (KIDAS, EditPro, Vidéo React) sont rendus image par image avec leur son : synchronisation garantie, la durée vient du fichier. Format et durée ne servent que pour les autres pages (mode universel, synchro non garantie).</small>
+    <button id="go" type="button">3. Générer la vidéo</button>
+    <button id="cancel" class="danger" type="button" hidden>Annuler le rendu</button>
+  </section>
+
+  <section class="card" aria-label="Progression" id="progCard" hidden>
+    <ol class="steps" id="steps">
+      <li data-s="pending">Envoi</li>
+      <li data-s="pending">Lancement</li>
+      <li data-s="pending">Rendu</li>
+      <li data-s="pending">Publication</li>
+    </ol>
+    <p id="st" class="mut" aria-live="polite">Prêt.</p>
+    <p id="hint" class="mut" hidden></p>
     <p id="stl" hidden><a id="stla" target="_blank" rel="noopener">Voir le journal du rendu</a></p>
     <div id="res"></div>
   </section>
 
-  <section class="card">
-    <b>Vidéos générées</b>
-    <ul id="list"><li class="mut">Chargement…</li></ul>
+  <section class="card" aria-label="Historique">
+    <div class="row"><h2 style="margin:0">Vidéos générées</h2><button class="sec" id="refresh" type="button">Actualiser</button></div>
+    <ul id="list"><li class="empty">Chargement…</li></ul>
   </section>
 </main>
 
@@ -96,97 +169,71 @@ const MODES = {
   half: { scale: '0.5', test: '0'  },
   test: { scale: '0.5', test: '10' }
 };
+const MAX_BYTES = 50e6;
 const $ = s => document.querySelector(s);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-let token = '';
-try { token = localStorage.getItem('gh_token') || ''; } catch (e) {}
+const mmss = ms => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+const size = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' Mo' : Math.max(1, Math.round(n / 1024)) + ' Ko';
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
+};
 
+let token = store.get('gh_token') || '';
+let busy = false, cancelled = false, currentRunId = null, fileText = '', verdict = null;
+
+/* ---------- jeton ---------- */
 function renderToken() { $('#tokEdit').hidden = !!token; $('#tokOk').hidden = !token; }
-function saveToken(v) {
-  token = v.trim();
-  try { token ? localStorage.setItem('gh_token', token) : localStorage.removeItem('gh_token'); } catch (e) {}
-  renderToken();
-}
-function status(msg, cls, url) {
-  const s = $('#st'); s.textContent = msg; s.className = cls || 'mut';
-  $('#stl').hidden = !url; if (url) $('#stla').href = url;
-}
+function saveToken(v) { token = v.trim(); store.set('gh_token', token || null); renderToken(); loadList(); }
 
+/* ---------- API GitHub ---------- */
 async function gh(path, opts = {}) {
   const headers = { 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
   if (token) headers.Authorization = 'Bearer ' + token;
   if (opts.body) headers['Content-Type'] = 'application/json';
-  const r = await fetch(API + path, { ...opts, headers });
+  let r;
+  try { r = await fetch(API + path, { ...opts, headers }); }
+  catch (e) { const err = new Error('Pas de connexion à GitHub. Vérifie ton réseau puis réessaie.'); err.status = 0; throw err; }
   if (r.status === 204) return null;
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(j.message || ('Erreur ' + r.status)); e.status = r.status; throw e; }
   return j;
 }
-
+function explain(e) {
+  if (e.cancelled) return 'Rendu annulé.';
+  if (e.status === 0) return e.message;
+  if (e.status === 401) return 'Jeton refusé ou expiré. Clique sur « Changer » et colle un nouveau jeton.';
+  if (e.status === 403 && /rate limit/i.test(e.message)) return 'Trop de requêtes GitHub. Attends quelques minutes puis réessaie.';
+  if (e.status === 403 || e.status === 404) return 'Droits insuffisants : le jeton doit avoir Contents et Actions en lecture/écriture sur le dépôt Kidas.';
+  if (e.status === 409) return 'Conflit d’envoi sur GitHub. Réessaie dans quelques secondes.';
+  if (e.status === 422) return 'GitHub a refusé la demande de rendu. Vérifie que le workflow « Rendu vidéo » existe et accepte ces réglages.';
+  if (e.status === 413) return 'Fichier trop gros pour GitHub.';
+  return e.message || 'Erreur inconnue.';
+}
 function toB64(buf) {
   const u = new Uint8Array(buf); let s = '';
   for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
   return btoa(s);
 }
-function explain(e) {
-  if (e.status === 401) return 'Jeton refusé ou expiré. Clique sur « Changer » et colle un nouveau jeton.';
-  if (e.status === 403 || e.status === 404) return 'Droits insuffisants : le jeton doit avoir Contents et Actions en lecture/écriture sur le dépôt Kidas.';
-  return e.message;
-}
-const mmss = ms => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 
-async function waitRelease(id) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < 95 * 60000) {
-    await sleep(8000);
-    const d = await gh('/actions/runs?event=workflow_dispatch&per_page=10');
-    const run = d.workflow_runs.find(r => r.display_title === 'Rendu ' + id);
-    const el = mmss(Date.now() - t0);
-    if (!run) { status('Démarrage du rendu… (' + el + ')'); continue; }
-    if (run.status !== 'completed') {
-      status((run.status === 'queued' ? 'En file d’attente… ' : 'Rendu en cours… ') + '(' + el + ')', null, run.html_url);
-      continue;
-    }
-    if (run.conclusion !== 'success') {
-      const e = new Error('Le rendu a échoué.'); e.url = run.html_url; throw e;
-    }
-    return gh('/releases/tags/' + id);
-  }
-  throw new Error('Délai dépassé (plus de 95 minutes).');
+/* ---------- affichage de l'état ---------- */
+function setSteps(active, failed) {
+  [...$('#steps').children].forEach((li, i) => {
+    li.dataset.s = failed === i ? 'err' : i < active ? 'done' : i === active ? 'active' : 'pending';
+  });
+}
+function status(msg, cls, url) {
+  const s = $('#st'); s.textContent = msg; s.className = cls || 'mut';
+  $('#stl').hidden = !url; if (url) $('#stla').href = url;
+}
+function hint(msg) { const h = $('#hint'); h.hidden = !msg; h.textContent = msg || ''; }
+function setBusy(b) {
+  busy = b;
+  $('#go').disabled = b; $('#go').hidden = b;
+  $('#cancel').hidden = !b; $('#cancel').disabled = false;
 }
 
-function showResult(rel) {
-  const a = (rel.assets || []).find(x => x.name.toLowerCase().endsWith('.mp4'));
-  const box = $('#res'); box.textContent = '';
-  if (!a) { box.textContent = 'Rendu terminé, mais aucun MP4 trouvé dans la publication.'; return; }
-  const v = document.createElement('video');
-  v.controls = true; v.playsInline = true; v.preload = 'metadata'; v.src = a.browser_download_url;
-  const dl = document.createElement('a');
-  dl.href = a.browser_download_url; dl.textContent = 'Télécharger le MP4 (' + (a.size / 1048576).toFixed(1) + ' Mo)';
-  dl.style.cssText = 'display:inline-block;margin-top:10px;font-weight:700';
-  box.append(v, dl);
-}
-
-async function loadList() {
-  const ul = $('#list');
-  try {
-    const rels = await gh('/releases?per_page=8');
-    ul.textContent = '';
-    const items = rels.filter(r => (r.assets || []).some(x => x.name.toLowerCase().endsWith('.mp4')));
-    if (!items.length) { ul.innerHTML = '<li class="mut">Aucune vidéo pour l’instant.</li>'; return; }
-    for (const r of items) {
-      const a = r.assets.find(x => x.name.toLowerCase().endsWith('.mp4'));
-      const li = document.createElement('li'), l = document.createElement('a');
-      l.href = a.browser_download_url; l.textContent = a.name;
-      const d = document.createElement('small');
-      d.textContent = ' · ' + new Date(r.created_at).toLocaleString('fr-FR') + ' · ' + (a.size / 1048576).toFixed(1) + ' Mo';
-      li.append(l, d); ul.append(li);
-    }
-  } catch (e) { ul.innerHTML = '<li class="mut">Liste indisponible.</li>'; }
-}
-
-/* Vérification du fichier avant tout import (mêmes règles que html2mp4.py) */
-let verdict = null;
+/* ---------- vérification du fichier (mêmes règles que html2mp4.py) ---------- */
 function analyze(t) {
   const count = (s, sub) => s.split(sub).length - 1;
   if (t.trim().length < 20 || !/<(?:!doctype|html|head|body|script|svg|canvas|div|style)\b/i.test(t))
@@ -197,56 +244,219 @@ function analyze(t) {
   const editpro = t.includes('function render(t)') && count(t, '(function loop(){let t=') === 1
     && t.includes('const IM=') && /"voice"\s*:\s*"[A-Za-z0-9+\/=]{1000,}"/.test(t);
   if (editpro) return { kind: 'editpro', label: 'EditPro (canvas + voix intégrée)' };
+  const voicevideo = t.includes('window.__video') && /\bseek\s*\(/.test(t)
+    && /<audio\b[^>]*\ssrc=["']data:audio\//i.test(t) && /\bDUR\s*=/.test(t);
+  if (voicevideo) return { kind: 'voicevideo', label: 'Vidéo React (audio intégré + window.__video)' };
   return { kind: 'generic', label: 'Page HTML générique' };
 }
 function showVerdict(v, cls, msg) {
-  verdict = v; const e = $('#verdict'); e.hidden = !msg; e.textContent = msg || ''; e.className = cls || 'mut';
+  verdict = v;
+  const e = $('#verdict'); e.hidden = !msg; e.textContent = msg || ''; e.className = cls || 'mut';
+}
+function resetPreview() {
+  const p = $('#prev'); p.hidden = true; p.removeAttribute('srcdoc');
+  $('#prevBtn').textContent = 'Voir un aperçu';
 }
 async function checkFile() {
+  resetPreview(); fileText = '';
   const f = $('#file').files[0];
-  if (!f) return showVerdict(null);
-  if (f.size > 50e6) return showVerdict({ kind: 'invalid' }, 'err', '✗ Fichier trop gros (50 Mo maximum). Import bloqué.');
+  $('#prevBtn').hidden = true;
+  if (!f) { $('#fileinfo').hidden = true; return showVerdict(null); }
+  $('#fileinfo').hidden = false; $('#fileinfo').textContent = f.name + ' · ' + size(f.size);
+  if (!/\.html?$/i.test(f.name)) return showVerdict({ kind: 'invalid' }, 'err', '✗ Seuls les fichiers .html ou .htm sont acceptés. Import bloqué.');
+  if (f.size > MAX_BYTES) return showVerdict({ kind: 'invalid' }, 'err', '✗ Fichier trop gros (50 Mo maximum). Import bloqué.');
   showVerdict(null, 'mut', 'Vérification du fichier…');
   let v;
-  try { v = analyze(await f.text()); } catch (e) { v = { kind: 'invalid', label: 'Lecture du fichier impossible.' }; }
-  if (v.kind === 'invalid') showVerdict(v, 'err', '✗ ' + v.label + ' Import bloqué.');
-  else if (v.kind === 'generic') showVerdict(v, 'warn', '⚠ Fichier non reconnu : rendu universel en temps réel. La durée, la synchronisation et le son ne sont pas garantis.');
-  else showVerdict(v, 'ok', '✓ Fichier reconnu : ' + v.label + '. Rendu image par image avec le son.');
+  try { fileText = await f.text(); v = analyze(fileText); } catch (e) { v = { kind: 'invalid', label: 'Lecture du fichier impossible.' }; }
+  if (v.kind === 'invalid') return showVerdict(v, 'err', '✗ ' + v.label + ' Import bloqué.');
+  $('#prevBtn').hidden = false;
+  if (v.kind === 'generic') showVerdict(v, 'warn', '⚠ Fichier non reconnu : rendu universel en temps réel. La durée, la synchronisation et le son ne sont pas garantis.');
+  else showVerdict(v, 'ok', '✓ Fichier reconnu : ' + v.label + '. Rendu image par image avec le son, synchronisé.');
 }
+function setFile(files) {
+  if (!files || !files.length) return;
+  const dt = new DataTransfer(); dt.items.add(files[0]); $('#file').files = dt.files;
+  checkFile();
+}
+
+/* ---------- rendu ---------- */
+async function waitRelease(id, t0) {
+  let lastSeen = Date.now();
+  while (Date.now() - t0 < 95 * 60000) {
+    if (cancelled) { const e = new Error('annulé'); e.cancelled = true; throw e; }
+    await sleep(6000);
+    if (cancelled) { const e = new Error('annulé'); e.cancelled = true; throw e; }
+    const d = await gh('/actions/runs?event=workflow_dispatch&per_page=15');
+    const run = d.workflow_runs.find(r => r.display_title === 'Rendu ' + id);
+    const el = mmss(Date.now() - t0);
+    if (!run) {
+      if (Date.now() - lastSeen > 4 * 60000) throw new Error('Le rendu n’a pas démarré côté GitHub. Vérifie l’onglet Actions du dépôt puis réessaie.');
+      setSteps(1); status('Démarrage du rendu… (' + el + ')'); continue;
+    }
+    lastSeen = Date.now(); currentRunId = run.id;
+    if (run.status !== 'completed') {
+      setSteps(2);
+      status((run.status === 'queued' ? 'En file d’attente… ' : 'Rendu en cours… ') + '(' + el + ')', null, run.html_url);
+      hint('Une vidéo complète peut prendre plusieurs minutes. Tu peux quitter cette page : le rendu continue et reprendra ici.');
+      continue;
+    }
+    if (run.conclusion === 'cancelled') { const e = new Error('annulé'); e.cancelled = true; throw e; }
+    if (run.conclusion !== 'success') {
+      const e = new Error('Le rendu a échoué. Ouvre le journal pour voir pourquoi (ligne rouge ✗), corrige ton fichier puis réessaie.'); e.url = run.html_url; throw e;
+    }
+    setSteps(3); status('Publication de la vidéo…');
+    for (let k = 0; k < 10; k++) {
+      try { return await gh('/releases/tags/' + id); } catch (e) { if (e.status !== 404) throw e; await sleep(3000); }
+    }
+    throw new Error('Rendu terminé, mais la vidéo n’est pas encore publiée. Actualise l’historique dans un instant.');
+  }
+  throw new Error('Délai dépassé (plus de 95 minutes).');
+}
+
+function mp4Of(rel) { return (rel.assets || []).find(x => x.name.toLowerCase().endsWith('.mp4')); }
+
+function showResult(rel) {
+  const a = mp4Of(rel);
+  const box = $('#res'); box.textContent = '';
+  if (!a) { box.textContent = 'Rendu terminé, mais aucun MP4 trouvé dans la publication.'; return; }
+  const v = document.createElement('video');
+  v.controls = true; v.playsInline = true; v.preload = 'metadata'; v.src = a.browser_download_url;
+  const bar = document.createElement('div'); bar.className = 'actions';
+  const dl = document.createElement('a');
+  dl.className = 'btn'; dl.href = a.browser_download_url; dl.download = a.name;
+  dl.textContent = 'Télécharger (' + size(a.size) + ')';
+  const cp = document.createElement('button'); cp.type = 'button'; cp.className = 'sec'; cp.textContent = 'Copier le lien';
+  cp.onclick = async () => {
+    try { await navigator.clipboard.writeText(a.browser_download_url); cp.textContent = 'Lien copié ✓'; }
+    catch (e) { window.prompt('Copie ce lien :', a.browser_download_url); }
+    setTimeout(() => { cp.textContent = 'Copier le lien'; }, 2000);
+  };
+  bar.append(dl, cp);
+  if (navigator.share) {
+    const sh = document.createElement('button'); sh.type = 'button'; sh.className = 'sec'; sh.textContent = 'Partager';
+    sh.onclick = () => navigator.share({ title: a.name, url: a.browser_download_url }).catch(() => {});
+    bar.append(sh);
+  }
+  const info = document.createElement('small');
+  v.addEventListener('loadedmetadata', () => {
+    info.textContent = 'Durée ' + mmss(v.duration * 1000) + ' · ' + v.videoWidth + '×' + v.videoHeight + ' · ' + size(a.size);
+  });
+  box.append(v, info, bar);
+}
+
+async function loadList() {
+  const ul = $('#list');
+  if (!token) { ul.innerHTML = '<li class="empty">Ajoute ton jeton pour voir l’historique.</li>'; return; }
+  try {
+    const rels = await gh('/releases?per_page=12');
+    ul.textContent = '';
+    const items = rels.filter(r => mp4Of(r));
+    if (!items.length) { ul.innerHTML = '<li class="empty">Aucune vidéo pour l’instant.<br>Dépose un fichier HTML ci-dessus pour commencer.</li>'; return; }
+    for (const r of items) {
+      const a = mp4Of(r);
+      const li = document.createElement('li');
+      const meta = document.createElement('div'); meta.className = 'meta';
+      const l = document.createElement('a'); l.href = a.browser_download_url; l.textContent = a.name;
+      const d = document.createElement('small');
+      d.textContent = new Date(r.created_at).toLocaleString('fr-FR') + ' · ' + size(a.size);
+      meta.append(l, d);
+      const del = document.createElement('button'); del.type = 'button'; del.className = 'sec danger'; del.textContent = 'Supprimer';
+      del.setAttribute('aria-label', 'Supprimer la vidéo ' + a.name);
+      del.onclick = async () => {
+        if (!confirm('Supprimer définitivement cette vidéo ?')) return;
+        del.disabled = true;
+        try {
+          await gh('/releases/' + r.id, { method: 'DELETE' });
+          if (r.tag_name) { try { await gh('/git/refs/tags/' + encodeURIComponent(r.tag_name), { method: 'DELETE' }); } catch (e) {} }
+          loadList();
+        } catch (e) { del.disabled = false; alert(explain(e)); }
+      };
+      li.append(meta, del); ul.append(li);
+    }
+  } catch (e) { ul.innerHTML = ''; const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'Liste indisponible : ' + explain(e); ul.append(li); }
+}
+
+async function finish(rel) {
+  showResult(rel); setSteps(4); status('Terminé ✓', 'ok'); hint(''); store.set('kidas_job', null); loadList();
+}
+function fail(e, step) {
+  setSteps(0, step);
+  [...$('#steps').children].forEach((li, i) => { if (i < step) li.dataset.s = 'done'; if (i > step) li.dataset.s = 'pending'; });
+  status((e.cancelled ? '' : '✗ ') + explain(e), e.cancelled ? 'mut' : 'err', e.url);
+  hint(''); store.set('kidas_job', null);
+}
+function currentStepIndex() { return [...$('#steps').children].findIndex(li => li.dataset.s === 'active'); }
 
 async function go() {
+  if (busy) return;
   const f = $('#file').files[0];
-  if (!token) return status('Ajoute d’abord ton jeton GitHub.', 'err');
-  if (!f) return status('Choisis un fichier HTML.', 'err');
+  $('#progCard').hidden = false;
+  if (!token) { setSteps(-1); return status('Ajoute d’abord ton jeton GitHub.', 'err'); }
+  if (!f) { setSteps(-1); return status('Choisis ou dépose un fichier HTML.', 'err'); }
   if (!verdict) await checkFile();
-  if (!verdict || verdict.kind === 'invalid') return status('Fichier refusé : il n’a pas été importé.', 'err');
+  if (!verdict || verdict.kind === 'invalid') { setSteps(-1); return status('Fichier refusé : il n’a pas été importé.', 'err'); }
   const m = MODES[$('#mode').value];
   const id = 'v' + Date.now().toString(36);
-  $('#go').disabled = true; $('#res').textContent = '';
+  const t0 = Date.now();
+  cancelled = false; currentRunId = null; setBusy(true); $('#res').textContent = ''; hint('');
+  let step = 0;
   try {
-    status('Envoi du fichier…');
+    setSteps(0); status('Envoi du fichier…');
     await gh(`/contents/uploads/${id}.html`, { method: 'PUT',
       body: JSON.stringify({ message: 'Import ' + id, content: toB64(await f.arrayBuffer()), branch: UPLOAD_BRANCH }) });
-    status('Lancement du rendu…');
+    if (cancelled) { const e = new Error('annulé'); e.cancelled = true; throw e; }
+    step = 1; setSteps(1); status('Lancement du rendu…');
     await sleep(2500);
     await gh('/actions/workflows/render.yml/dispatches', { method: 'POST',
-      body: JSON.stringify({ ref: BRANCH, inputs: { fichier: `uploads/${id}.html`, fps: '30', scale: m.scale, test: m.test, duration: $('#duration').value, format: $('#format').value, tag: id } }) });
-    const rel = await waitRelease(id);
-    showResult(rel);
-    status('Terminé ✓', 'ok');
-    loadList();
+      body: JSON.stringify({ ref: BRANCH, inputs: { fichier: `uploads/${id}.html`, fps: $('#fps').value, scale: m.scale, test: m.test, duration: $('#duration').value, format: $('#format').value, tag: id } }) });
+    store.set('kidas_job', JSON.stringify({ id, t0 }));
+    step = 2;
+    await finish(await waitRelease(id, t0));
   } catch (e) {
-    status(explain(e), 'err', e.url);
+    const s = currentStepIndex();
+    fail(e, s >= 0 ? s : step);
   }
-  $('#go').disabled = false;
+  setBusy(false);
 }
 
+async function cancel() {
+  cancelled = true; $('#cancel').disabled = true; status('Annulation en cours…');
+  if (currentRunId) { try { await gh('/actions/runs/' + currentRunId + '/cancel', { method: 'POST' }); } catch (e) {} }
+}
+
+/* reprise d'un rendu en cours après rechargement de la page */
+async function resume() {
+  const raw = store.get('kidas_job'); if (!raw || !token) return;
+  let job; try { job = JSON.parse(raw); } catch (e) { return store.set('kidas_job', null); }
+  if (!job.id || Date.now() - job.t0 > 95 * 60000) return store.set('kidas_job', null);
+  cancelled = false; setBusy(true); $('#progCard').hidden = false; setSteps(2); status('Reprise du suivi du rendu…');
+  try { await finish(await waitRelease(job.id, job.t0)); }
+  catch (e) { fail(e, Math.max(currentStepIndex(), 2)); }
+  setBusy(false);
+}
+
+/* ---------- événements ---------- */
 $('#tokSave').onclick = () => { const v = $('#tok').value; if (v.trim()) { saveToken(v); $('#tok').value = ''; } };
 $('#tokDel').onclick = () => saveToken('');
 $('#file').onchange = checkFile;
 $('#go').onclick = go;
+$('#cancel').onclick = cancel;
+$('#refresh').onclick = loadList;
+$('#prevBtn').onclick = () => {
+  const p = $('#prev');
+  if (p.hidden) { p.srcdoc = fileText; p.hidden = false; $('#prevBtn').textContent = 'Fermer l’aperçu'; }
+  else resetPreview();
+};
+const drop = $('#drop');
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => setFile(e.dataTransfer && e.dataTransfer.files));
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+
 renderToken();
 loadList();
+resume();
 </script>
 </body>
 </html>
