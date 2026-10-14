@@ -37,6 +37,7 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertEqual(renderer.frame_sample_index(samples, 0.5), 2)
         self.assertIn("document.getAnimations", renderer.DURATION_DETECT_JS)
         self.assertIn("querySelectorAll('audio,video')", renderer.DURATION_DETECT_JS)
+        self.assertIn("window.__video.duration", renderer.DURATION_DETECT_JS)
 
     def test_relative_asset_base_is_injected(self):
         html = "<html><head></head><body><img src='assets/pic.png'></body></html>"
