@@ -21,7 +21,7 @@ button:disabled{opacity:.5}
 a{color:var(--ac)}
 small,.mut{color:var(--mut)}
 #st{font-weight:600;margin:0}
-#st.ok{color:var(--ok)}#st.err{color:var(--err)}
+#st.ok,#verdict.ok{color:var(--ok)}#st.err,#verdict.err{color:var(--err)}#verdict.warn{color:#b7791f}
 video{width:100%;max-height:70vh;border-radius:12px;background:#000;margin-top:10px}
 ul{padding-left:18px;margin:8px 0 0}
 li{margin:4px 0}
@@ -49,6 +49,7 @@ li{margin:4px 0}
   <section class="card">
     <label for="file">Fichier HTML</label>
     <input id="file" type="file" accept=".html,.htm,text/html">
+    <p id="verdict" class="mut" style="margin:8px 0 0;font-size:.92rem" hidden></p>
     <label for="mode">Qualité</label>
     <select id="mode">
       <option value="full">Vidéo complète · 1080×1920</option>
@@ -71,7 +72,7 @@ li{margin:4px 0}
       <option value="120">120 secondes</option>
       <option value="300">5 minutes</option>
     </select>
-    <small>Les pages HTML sans durée déclarée utilisent la durée choisie. Le format choisi s’applique au mode universel ; KIDAS v2 conserve son format natif pour préserver la synchronisation.</small>
+    <small>Le fichier est vérifié avant l’import. KIDAS et EditPro sont rendus image par image avec leur son ; la durée et le format choisis ne servent que pour les autres pages (mode universel).</small>
     <button id="go" type="button">Générer la vidéo</button>
   </section>
 
@@ -184,11 +185,41 @@ async function loadList() {
   } catch (e) { ul.innerHTML = '<li class="mut">Liste indisponible.</li>'; }
 }
 
+/* Vérification du fichier avant tout import (mêmes règles que html2mp4.py) */
+let verdict = null;
+function analyze(t) {
+  const count = (s, sub) => s.split(sub).length - 1;
+  if (t.trim().length < 20 || !/<(?:!doctype|html|head|body|script|svg|canvas|div|style)\b/i.test(t))
+    return { kind: 'invalid', label: 'Ce fichier ne ressemble pas à une page HTML.' };
+  const kidas = count(t, 'const [t,setT]=useState(0),') === 1 && /[.#]stage\s*\{/.test(t)
+    && /\bAUD\s*=\s*'data:audio\//.test(t) && /\bD\s*=\s*\d/.test(t);
+  if (kidas) return { kind: 'kidas', label: 'KIDAS (React + audio intégré)' };
+  const editpro = t.includes('function render(t)') && count(t, '(function loop(){let t=') === 1
+    && t.includes('const IM=') && /"voice"\s*:\s*"[A-Za-z0-9+\/=]{1000,}"/.test(t);
+  if (editpro) return { kind: 'editpro', label: 'EditPro (canvas + voix intégrée)' };
+  return { kind: 'generic', label: 'Page HTML générique' };
+}
+function showVerdict(v, cls, msg) {
+  verdict = v; const e = $('#verdict'); e.hidden = !msg; e.textContent = msg || ''; e.className = cls || 'mut';
+}
+async function checkFile() {
+  const f = $('#file').files[0];
+  if (!f) return showVerdict(null);
+  if (f.size > 50e6) return showVerdict({ kind: 'invalid' }, 'err', '✗ Fichier trop gros (50 Mo maximum). Import bloqué.');
+  showVerdict(null, 'mut', 'Vérification du fichier…');
+  let v;
+  try { v = analyze(await f.text()); } catch (e) { v = { kind: 'invalid', label: 'Lecture du fichier impossible.' }; }
+  if (v.kind === 'invalid') showVerdict(v, 'err', '✗ ' + v.label + ' Import bloqué.');
+  else if (v.kind === 'generic') showVerdict(v, 'warn', '⚠ Fichier non reconnu : rendu universel en temps réel. La durée, la synchronisation et le son ne sont pas garantis.');
+  else showVerdict(v, 'ok', '✓ Fichier reconnu : ' + v.label + '. Rendu image par image avec le son.');
+}
+
 async function go() {
   const f = $('#file').files[0];
   if (!token) return status('Ajoute d’abord ton jeton GitHub.', 'err');
   if (!f) return status('Choisis un fichier HTML.', 'err');
-  if (f.size > 50e6) return status('Fichier trop gros (50 Mo maximum).', 'err');
+  if (!verdict) await checkFile();
+  if (!verdict || verdict.kind === 'invalid') return status('Fichier refusé : il n’a pas été importé.', 'err');
   const m = MODES[$('#mode').value];
   const id = 'v' + Date.now().toString(36);
   $('#go').disabled = true; $('#res').textContent = '';
@@ -212,6 +243,7 @@ async function go() {
 
 $('#tokSave').onclick = () => { const v = $('#tok').value; if (v.trim()) { saveToken(v); $('#tok').value = ''; } };
 $('#tokDel').onclick = () => saveToken('');
+$('#file').onchange = checkFile;
 $('#go').onclick = go;
 renderToken();
 loadList();

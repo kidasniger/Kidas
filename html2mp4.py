@@ -354,41 +354,87 @@ def page_ws_url(port):
 # ----------------------------------------------------------------------------
 # Préparation du HTML et de l'audio
 # ----------------------------------------------------------------------------
+def detect_profile(text):
+    """
+    Vérifie le fichier avant tout rendu. Retourne (profil, libellé) avec profil dans :
+      kidas   : React + audio intégré (KIDAS Vidéo v2, KIDAS motion design 9:16)
+      editpro : canvas + fonction render(t) + voix intégrée (EditPro – Vidéo 60 s)
+      generic : autre page HTML (rendu universel en temps réel, synchro non garantie)
+      invalid : ce n'est pas une page HTML exploitable
+    """
+    if len(text.strip()) < 20 or not re.search(r"<(?:!doctype|html|head|body|script|svg|canvas|div|style)\b", text, re.I):
+        return "invalid", "Ce fichier ne ressemble pas à une page HTML."
+    kidas = (
+        text.count("const [t,setT]=useState(0),") == 1
+        and bool(re.search(r"[.#]stage\s*\{", text))
+        and bool(re.search(r"\bAUD\s*=\s*'data:audio/", text))
+        and bool(re.search(r"\bD\s*=\s*\d", text))
+    )
+    if kidas:
+        return "kidas", "KIDAS (React + audio intégré)"
+    editpro = (
+        "function render(t)" in text
+        and text.count("(function loop(){let t=") == 1
+        and "const IM=" in text
+        and bool(re.search(r'"voice"\s*:\s*"[A-Za-z0-9+/=]{1000,}"', text))
+    )
+    if editpro:
+        return "editpro", "EditPro (canvas + voix intégrée)"
+    return "generic", "Page HTML générique (mode universel)"
+
+
 def patch_html(text):
     """
-    Rend le rendu déterministe : expose setT (état du temps) et empêche la boucle
-    de la page de l'écraser. Si le motif n'est pas trouvé, on retombe sur un mode
-    de secours (on déplace la lecture audio et on attend le rendu).
+    Rend le rendu déterministe selon le profil détecté. Retourne (texte, profil) ;
+    profil vaut "" si aucun mode image par image n'est possible.
     """
-    a = "const [t,setT]=useState(0),"
-    b = "pv.current=c;setT(c)}"
-    if text.count(a) == 1 and text.count(b) == 1:
-        text = text.replace(a, "const [t,setT]=useState(0),__hk=(window.__setT=setT),", 1)
-        text = text.replace(b, "pv.current=c;if(!window.__manual)setT(c)}", 1)
-        return text, True
-    return text, False
+    profile, _ = detect_profile(text)
+    if profile == "kidas":
+        # setT devient inactif en mode manuel : la boucle audio de la page ne l'écrase plus.
+        a = "const [t,setT]=useState(0),"
+        text = text.replace(a, "const [t,__s]=useState(0),setT=v=>{window.__manual||__s(v)},__hk=(window.__setT=__s),", 1)
+        return text, "kidas"
+    if profile == "editpro":
+        a = "(function loop(){let t="
+        text = text.replace(a, "(function loop(){if(window.__manual)return;let t=", 1)
+        return text, "editpro"
+    return text, ""
+
+
+def editpro_duration(text):
+    m = re.search(r"if\(t>=(\d+(?:\.\d+)?)\)\{t=", text)
+    return float(m.group(1)) if m else 60.0
 
 
 MIME_EXT = {"mpeg": "mp3", "mp3": "mp3", "wav": "wav", "x-wav": "wav", "ogg": "ogg", "mp4": "m4a", "aac": "aac", "webm": "webm"}
 
 
-def extract_audio(text, tmp):
-    """Retourne {'voice': Path|None, 'music': Path|None}."""
-    out = {}
+def extract_audio(text, tmp, profile="kidas"):
+    """Retourne {'voice': Path|None, 'music': Path|None, 'music_volume': float}."""
+    out = {"voice": None, "music": None, "music_volume": 0.2}
+    if profile == "editpro":
+        m = re.search(r'"voice"\s*:\s*"([A-Za-z0-9+/=]+)"', text)
+        if m:
+            p = tmp / "voice.mp3"
+            p.write_bytes(base64.b64decode(m.group(1)))
+            out["voice"] = p
+        return out
     for key, var in (("voice", "AUD"), ("music", "MUS")):
         m = re.search(var + r"='data:audio/([a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)'", text)
         if not m:
-            out[key] = None
             continue
         ext = MIME_EXT.get(m.group(1), "mp3")
         p = tmp / f"{key}.{ext}"
         p.write_bytes(base64.b64decode(m.group(2)))
         out[key] = p
+    v = re.search(r"\.current\.volume\s*=\s*(\d*\.?\d+)", text)
+    if v:
+        out["music_volume"] = min(1.0, float(v.group(1)))
     return out
 
 
 def detect_stage_size(text):
-    m = re.search(r"\.stage\{[^}]*?width:(\d+)px;height:(\d+)px", text)
+    m = re.search(r"[.#]stage\{[^}]*?width:(\d+)px;height:(\d+)px", text)
     return (int(m.group(1)), int(m.group(2))) if m else (1080, 1920)
 
 
@@ -397,14 +443,32 @@ window.__raf = () => new Promise(r => { let d = false; const f = () => { if (!d)
   requestAnimationFrame(f); setTimeout(f, 120); });
 
 window.__prep = async () => {
-  await Promise.all(['400','600','800'].map(w => document.fonts.load(w + ' 40px Sora').catch(() => 0)));
+  const faces = [...document.fonts].filter(f => f.unicodeRange === 'U+0-10FFFF' || /U\+0000/.test(f.unicodeRange));
+  await Promise.all(faces.map(f => f.load().catch(() => 0)));
   const au = [...document.querySelectorAll('audio')];
   await Promise.all(au.map(a => a.readyState >= 1 ? 1 :
     new Promise(r => { a.addEventListener('loadedmetadata', r, {once: true}); setTimeout(r, 15000); })));
   return au.map(a => a.duration);
 };
 
+window.__finish = async () => {
+  await document.fonts.ready;
+  const imgs = [...document.images];
+  if (imgs.length) await Promise.all(imgs.map(i => i.decode ? i.decode().catch(() => 0) : 0));
+  await window.__raf();
+};
+
 window.__seek = async (t) => {
+  if (window.__profile === 'editpro') {
+    if (!window.__ep) {
+      window.__manual = true; window.__ep = true;
+      run = true; vi = 0; subEnd = 0;
+      const ui = document.querySelector('#ui'); if (ui) ui.style.display = 'none';
+    }
+    render(Math.max(0, t));
+    await window.__finish();
+    return 1;
+  }
   if (window.__setT && window.ReactDOM && ReactDOM.flushSync) {
     window.__manual = true;
     ReactDOM.flushSync(() => window.__setT(t));
@@ -415,16 +479,14 @@ window.__seek = async (t) => {
     await new Promise(r => setTimeout(r, 40));
     await window.__raf();
   }
-  await document.fonts.ready;
-  const imgs = [...document.images];
-  if (imgs.length) await Promise.all(imgs.map(i => i.decode ? i.decode().catch(() => 0) : 0));
-  await window.__raf();
+  await window.__finish();
   for (const d of document.querySelectorAll('.stage div'))
     if (!d.children.length && d.textContent.startsWith('Touchez pour lancer')) d.style.display = 'none';
   return 1;
 };
 
 window.__sfx = async () => {
+  if (typeof SFX === 'undefined' || typeof EV === 'undefined') return '';
   const sr = 44100, L = Math.ceil((D + 1.5) * sr);
   const oc = new OfflineAudioContext(1, L, sr);
   let T = 0;
@@ -666,21 +728,20 @@ def render(html_path, args):
             subprocess.call(["termux-wake-lock"])
 
         text = html_path.read_text(encoding="utf-8", errors="ignore")
-        text, patched = patch_html(text)
-        precise_candidate = (
-            patched
-            and bool(re.search(r"\.stage\s*\{", text))
-            and bool(re.search(r"\bD\s*=", text))
-            and bool(re.search(r"\bAUD\s*=", text))
-        )
+        profile, label = detect_profile(text)
+        if profile == "invalid":
+            die(label)
+        info(f"Fichier vérifié : {label}")
+        text, profile = patch_html(text)
+        precise_candidate = profile in ("kidas", "editpro")
         W, H = choose_frame_size(text, "auto" if precise_candidate else args.format)
         page = tmp / "page.html"
         text = inject_base_url(text, html_path.parent.resolve().as_uri().rstrip("/") + "/")
         if not precise_candidate:
             text = inject_generic_audio_capture(text)
         page.write_text(text, encoding="utf-8")
-        audio = extract_audio(text, tmp) if precise_candidate else {"voice": None, "music": None}
-        info(f"Fenêtre {W}×{H} · analyse HTML · mode candidat : {'synchronisé' if patched else 'universel'}")
+        audio = extract_audio(text, tmp, profile) if precise_candidate else {"voice": None, "music": None, "music_volume": 0.2}
+        info(f"Fenêtre {W}×{H} · mode : {'image par image (synchronisé)' if precise_candidate else 'universel (temps réel, synchro non garantie)'}")
 
         chrome = find_chrome()
         viewport_height = H + 300 if precise_candidate else H
@@ -713,38 +774,54 @@ def render(html_path, args):
 
         is_precise = False
         if precise_candidate:
-            try:
-                is_precise = bool(cdp.ev("(()=>!!document.querySelector('.stage')&&document.querySelectorAll('audio').length>=1&&typeof D==='number'&&typeof window.__setT==='function')()", await_promise=False))
-            except RuntimeError:
-                is_precise = False
+            if profile == "kidas":
+                check = "(()=>!!document.querySelector('.stage')&&document.querySelectorAll('audio').length>=1&&typeof D==='number'&&typeof window.__setT==='function')()"
+            else:
+                check = "(()=>!!document.querySelector('#stage')&&typeof render==='function'&&typeof IM==='object')()"
+            t1 = time.time()
+            while time.time() - t1 < 30 and not is_precise:
+                try:
+                    is_precise = bool(cdp.ev(check, await_promise=False))
+                except RuntimeError:
+                    is_precise = False
+                if not is_precise:
+                    time.sleep(0.5)
+            if not is_precise:
+                die(f"Fichier reconnu ({label}) mais la page ne s'est pas initialisée : "
+                    "Internet est-il disponible pour charger React et les polices ?")
 
         if is_precise:
+            cdp.ev(f"window.__profile = {json.dumps(profile)}; 0", await_promise=False)
             cdp.ev(JS_HELPERS, await_promise=False)
             cdp.ev("window.__prep()")
-            total = float(cdp.ev("D"))
+            total = float(cdp.ev("D")) if profile == "kidas" else editpro_duration(text)
             dur = min(total, args.duration) if args.duration > 0 else total
             if args.test > 0:
                 dur = min(dur, args.test)
             fps = args.fps
             n_frames = max(1, int(round(dur * fps)))
-            info(f"Mode synchronisé KIDAS · audio intégré détecté · durée {dur:.2f} s · {fps} i/s")
+            info(f"Mode synchronisé · {label} · durée {dur:.2f} s · {fps} i/s")
 
             audio_inputs = []
             if audio["voice"]:
                 audio_inputs.append((audio["voice"], 1.0))
             if audio["music"]:
-                audio_inputs.append((audio["music"], 0.2))
-            try:
-                info("Génération des effets sonores KIDAS…")
-                b64 = cdp.ev("window.__sfx()")
-                sfx = tmp / "sfx.wav"
-                write_wav(sfx, base64.b64decode(b64))
-                audio_inputs.append((sfx, 1.0))
-            except Exception as e:  # noqa: BLE001
-                warn(f"Effets sonores KIDAS ignorés : {e}")
+                audio_inputs.append((audio["music"], audio["music_volume"]))
+            if profile == "kidas":
+                try:
+                    b64 = cdp.ev("window.__sfx()")
+                    if b64:
+                        info("Effets sonores recréés.")
+                        sfx = tmp / "sfx.wav"
+                        write_wav(sfx, base64.b64decode(b64))
+                        audio_inputs.append((sfx, 1.0))
+                except Exception as e:  # noqa: BLE001
+                    warn(f"Effets sonores ignorés : {e}")
+            if not audio_inputs:
+                warn("Aucune piste audio trouvée dans ce fichier : la vidéo sera muette.")
 
             cdp.ev("window.__seek(0)")
-            r = cdp.ev("(()=>{const r=document.querySelector('.stage').getBoundingClientRect();return [r.x,r.y,r.width,r.height]})()")
+            r = cdp.ev("(()=>{const r=document.querySelector('.stage,#stage').getBoundingClientRect();return [r.x,r.y,r.width,r.height]})()")
             if abs(r[2] - W) > 2 or abs(r[3] - H) > 2:
                 warn(f"La scène mesure {r[2]:.0f}×{r[3]:.0f} au lieu de {W}×{H} : rendu possiblement flou.")
             clip = {"x": round(r[0]), "y": round(r[1]), "width": W, "height": H, "scale": args.scale}
