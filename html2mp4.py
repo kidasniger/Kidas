@@ -416,12 +416,18 @@ def detect_html_duration(text):
     for pattern in patterns:
         candidates.extend(float(x) for x in re.findall(pattern, text, re.I))
 
-    # Une animation infinie ne définit pas la durée de la vidéo.
+    # Une animation infinie ou une horloge JavaScript personnalisée ne définit
+    # pas à elle seule la durée totale du film.
     infinite = bool(re.search(
         r"animation-iteration-count\s*:\s*infinite|animation\s*:[^;{}]*\binfinite\b",
         text, re.I
     ))
-    if not infinite:
+    dynamic_clock = bool(re.search(
+        r"requestAnimationFrame|setTimeout|setInterval|AudioContext|createOscillator|"
+        r"<canvas\b|WebGL|gsap|lottie|framer.motion|three\.js",
+        text, re.I
+    ))
+    if not infinite and not dynamic_clock:
         for declaration in re.findall(r"animation-duration\s*:\s*([^;}]+)", text, re.I):
             for value, unit in re.findall(r"(\d+(?:\.\d+)?)\s*(ms|s)\b", declaration, re.I):
                 seconds = float(value) / (1000 if unit.lower() == "ms" else 1)
@@ -841,6 +847,10 @@ def render(html_path, args):
             subprocess.call(["termux-wake-lock"])
 
         text = html_path.read_text(encoding="utf-8", errors="ignore")
+        source_has_audio = bool(re.search(
+            r"<(?:audio|video)\b|AudioContext|webkitAudioContext|createOscillator|createMediaElementSource",
+            text, re.I
+        ))
         profile, label = detect_profile(text)
         if profile == "invalid":
             die(label)
@@ -854,7 +864,7 @@ def render(html_path, args):
             text = inject_generic_audio_capture(text)
         page.write_text(text, encoding="utf-8")
         audio = extract_audio(text, tmp, profile) if precise_candidate else {"voice": None, "music": None, "music_volume": 0.2}
-        info(f"Fenêtre {W}×{H} · mode : {'image par image (synchronisé)' if precise_candidate else 'universel (temps réel, synchro non garantie)'}")
+        info(f"Fenêtre {W}×{H} · mode : {'image par image (synchronisé)' if precise_candidate else 'universel (captures horodatées, durée conservée)'}")
 
         chrome = find_chrome()
         viewport_height = H + 300 if precise_candidate else H
@@ -963,6 +973,11 @@ def render(html_path, args):
                   const animationDurations = (document.getAnimations ? document.getAnimations() : [])
                     .map(a => { try { return a.effect ? a.effect.getComputedTiming().endTime / 1000 : NaN; } catch (_) { return NaN; } })
                     .filter(valid);
+                  const inlineCode = [...document.scripts].map(s => s.textContent || '').join('\\n');
+                  const hasDynamicClock = /requestAnimationFrame|setTimeout|setInterval|AudioContext|createOscillator|WebGL|gsap|lottie|framer.motion|three\\.js/i.test(inlineCode)
+                    || !!document.querySelector('canvas') || typeof window.React !== 'undefined'
+                    || typeof window.gsap !== 'undefined' || typeof window.THREE !== 'undefined'
+                    || typeof window.lottie !== 'undefined';
                   const svgDurations = [...document.querySelectorAll('animate[dur],animateTransform[dur],set[dur]')]
                     .map(el => {
                       const m = (el.getAttribute('dur') || '').match(/^([\d.]+)(ms|s|min)$/);
@@ -975,7 +990,7 @@ def render(html_path, args):
                     }).filter(valid);
                   const max = xs => xs.length ? Math.max(...xs) : 0;
                   return {exposed:max(exposed), media:max(mediaDurations),
-                    animation:max(animationDurations), svg:max(svgDurations)};
+                    animation:hasDynamicClock ? 0 : max(animationDurations), svg:max(svgDurations)};
                 })()""");
             } catch (e) {
                 warn("La durée du navigateur n'a pas pu être lue : " + e);
@@ -1131,7 +1146,7 @@ def render(html_path, args):
                     if p.stat().st_size > 500:
                         audio_inputs.append((p, 1.0, float(item.get("offset", 0.0))))
                 if audio_inputs:
-                    warn("Les pistes audio génériques sont incluses ; vérifie la synchronisation et les sons spécifiques de la page.")
+                    warn("Les pistes audio génériques sont incluses. Les sons produits hors des médias HTML/Web Audio interceptés peuvent ne pas être capturés.")
             except Exception as e:  # noqa: BLE001
                 warn(f"Impossible de récupérer la piste audio du navigateur : {e}")
             if frame_files and len(frame_files) < n_frames:
@@ -1165,7 +1180,7 @@ def render(html_path, args):
             die("FFmpeg a échoué :\n" + err_path.read_text(errors="ignore")[-1000:])
 
         shutil.move(str(out_tmp), str(out_final))
-        verify_rendered_mp4(out_final, fps, n_frames, expected_audio=bool(audio_inputs))
+        verify_rendered_mp4(out_final, fps, n_frames, expected_audio=(bool(audio_inputs) or source_has_audio))
         good(f"Terminé en {fmt_time(time.monotonic() - start)} → {out_final}")
         return out_final
     finally:
