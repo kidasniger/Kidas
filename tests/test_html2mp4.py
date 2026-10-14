@@ -65,6 +65,7 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertTrue((fixtures / "webaudio.html").is_file())
         self.assertTrue((fixtures / "static.html").is_file())
         self.assertTrue((fixtures / "start-button.html").is_file())
+        self.assertTrue((fixtures / "duration-detected.html").is_file())
 
     # --- vérification automatique du fichier ---
     EDITPRO = ('<html><body><div id="stage"></div><script>const IM={"voice":"' + "QUJD" * 400 + '"};'
