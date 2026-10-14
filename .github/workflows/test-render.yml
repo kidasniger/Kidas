@@ -1,0 +1,38 @@
+name: Tests du convertisseur HTML
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Installer FFmpeg et les dépendances
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install websocket-client
+      - name: Tests unitaires
+        run: python -m unittest discover -s tests -v
+      - name: Rendus de régression HTML/CSS/Canvas/Web Audio
+        run: |
+          set -e
+          for file in tests/fixtures/css-animation.html tests/fixtures/canvas-animation.html tests/fixtures/webaudio.html tests/fixtures/static.html; do
+            python html2mp4.py --file "$file" --fps 10 --scale 0.5 --test 2 --duration 2 --format landscape
+          done
+          for file in tests/fixtures/css-animation_test.mp4 tests/fixtures/canvas-animation_test.mp4 tests/fixtures/webaudio_test.mp4 tests/fixtures/static_test.mp4; do
+            test -s "$file"
+            ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height -of csv=p=0 "$file"
+          done
+          echo "Les quatre formats HTML ont produit une vidéo."
