@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#05060f;color:#fff;font:24px system-ui,sans-serif}
+#scene{width:100vw;height:100vh;display:grid;place-items:center;background:linear-gradient(145deg,#122044,#41206b)}
+#shape{width:90px;height:90px;border-radius:25px;background:#fff;transform:translateX(-180px);opacity:.5}
+#scene.started #shape{animation:travel 1.2s ease-in-out infinite alternate}
+@keyframes travel{to{transform:translateX(180px) rotate(180deg);opacity:1;background:#34d9bb}}
+#ui{position:fixed;left:0;right:0;bottom:24px;text-align:center}
+button{font:inherit;border:0;border-radius:32px;padding:14px 24px;color:#17122c;background:#fff}
+</style>
+</head>
+<body>
+<div id="scene"><div id="shape"></div></div>
+<div id="ui"><button id="go">▶ Démarrer la vidéo</button></div>
+<script>
+let ctx;
+async function start(){
+  ctx = new AudioContext();
+  await ctx.resume();
+  const osc=ctx.createOscillator(), gain=ctx.createGain();
+  osc.frequency.value=440; gain.gain.value=.08;
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.start(); osc.stop(ctx.currentTime+1.5);
+  document.querySelector('#scene').classList.add('started');
+  document.querySelector('#ui').style.display='none';
+}
+document.querySelector('#go').addEventListener('click',start);
+</script>
+</body>
+</html>
