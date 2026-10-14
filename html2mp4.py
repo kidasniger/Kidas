@@ -506,6 +506,129 @@ def fmt_time(s):
     return f"{s // 60}:{s % 60:02d}"
 
 
+
+
+GENERIC_AUDIO_CAPTURE = r"""<script>
+(() => {
+  if (window.__h2mCaptureInstalled) return;
+  window.__h2mCaptureInstalled = true;
+  const Native = window.AudioContext || window.webkitAudioContext;
+  const contexts = [];
+  let active = false;
+  const originalConnect = window.AudioNode && AudioNode.prototype.connect;
+  if (originalConnect) {
+    AudioNode.prototype.connect = function(destination, ...args) {
+      const result = originalConnect.call(this, destination, ...args);
+      try {
+        const ctx = this.context;
+        if (ctx && destination === ctx.destination && ctx.__h2mDest && !ctx.__h2mDup) {
+          ctx.__h2mDup = true;
+          originalConnect.call(this, ctx.__h2mDest);
+          ctx.__h2mDup = false;
+        }
+      } catch (_) {}
+      return result;
+    };
+  }
+  function install(ctx) {
+    if (!ctx || ctx.__h2mDest) return;
+    try {
+      ctx.__h2mDest = ctx.createMediaStreamDestination();
+      ctx.__h2mChunks = [];
+      ctx.__h2mRec = null;
+      contexts.push(ctx);
+      if (active) start(ctx);
+    } catch (_) {}
+  }
+  if (Native) {
+    function WrappedAudioContext(...args) {
+      const ctx = new Native(...args);
+      install(ctx);
+      return ctx;
+    }
+    WrappedAudioContext.prototype = Native.prototype;
+    try { Object.setPrototypeOf(WrappedAudioContext, Native); } catch (_) {}
+    window.AudioContext = WrappedAudioContext;
+    if (window.webkitAudioContext) window.webkitAudioContext = WrappedAudioContext;
+  }
+  function start(ctx) {
+    if (!ctx || !ctx.__h2mDest || ctx.__h2mRec || !window.MediaRecorder) return;
+    try {
+      const type = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus' : 'audio/webm';
+      const rec = new MediaRecorder(ctx.__h2mDest.stream, { mimeType: type });
+      ctx.__h2mRec = rec;
+      rec.ondataavailable = e => { if (e.data && e.data.size) ctx.__h2mChunks.push(e.data); };
+      rec.start(250);
+    } catch (_) {}
+  }
+  window.__h2mStart = async () => {
+    active = true;
+    if (Native) {
+      for (const el of document.querySelectorAll('audio,video')) {
+        try {
+          if (!el.__h2mSource) {
+            const ctx = new Native();
+            install(ctx);
+            const source = ctx.createMediaElementSource(el);
+            el.__h2mSource = source;
+            source.connect(ctx.destination);
+          }
+        } catch (_) {}
+      }
+    }
+    for (const ctx of contexts) {
+      try { await ctx.resume(); } catch (_) {}
+      start(ctx);
+    }
+    for (const el of document.querySelectorAll('audio,video')) {
+      try { el.muted = false; el.currentTime = 0; const p = el.play(); if (p) await p.catch(() => {}); } catch (_) {}
+    }
+    return contexts.length;
+  };
+  window.__h2mStop = async () => {
+    const records = contexts.filter(c => c.__h2mRec);
+    await Promise.all(records.map(c => new Promise(resolve => {
+      const rec = c.__h2mRec;
+      if (rec.state === 'inactive') return resolve();
+      rec.addEventListener('stop', resolve, { once: true });
+      try { rec.stop(); } catch (_) { resolve(); }
+    })));
+    const result = [];
+    for (const ctx of records) {
+      try {
+        const blob = new Blob(ctx.__h2mChunks, { type: 'audio/webm' });
+        if (blob.size < 500) continue;
+        const data = await new Promise(resolve => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result).split(',').pop());
+          reader.onerror = () => resolve('');
+          reader.readAsDataURL(blob);
+        });
+        if (data) result.push({ mime: blob.type || 'audio/webm', data });
+      } catch (_) {}
+    }
+    return result;
+  };
+})();
+</script>"""
+
+
+def inject_generic_audio_capture(text):
+    """Installe l'enregistrement Web Audio avant les scripts de la page."""
+    if re.search(r"__h2mCaptureInstalled", text):
+        return text
+    m = re.search(r"<head\b[^>]*>", text, flags=re.I)
+    if m:
+        return text[:m.end()] + GENERIC_AUDIO_CAPTURE + text[m.end():]
+    return GENERIC_AUDIO_CAPTURE + text
+
+
+def choose_frame_size(text, fmt):
+    sizes = {"portrait": (1080, 1920), "landscape": (1920, 1080), "square": (1080, 1080)}
+    return sizes[fmt] if fmt in sizes else detect_stage_size(text)
+
+
 def render(html_path, args):
     tmp = Path(tempfile.mkdtemp(prefix="html2mp4_"))
     chrome = proc = cdp = enc = None
@@ -515,95 +638,162 @@ def render(html_path, args):
             subprocess.call(["termux-wake-lock"])
 
         text = html_path.read_text(encoding="utf-8", errors="ignore")
-        W, H = detect_stage_size(text)
+        original_text = text
         text, patched = patch_html(text)
+        precise_candidate = patched and bool(re.search(r"\.stage\s*\{", text))
+        W, H = choose_frame_size(text, args.format)
         page = tmp / "page.html"
+        if not patched:
+            text = inject_generic_audio_capture(text)
         page.write_text(text, encoding="utf-8")
-        audio = extract_audio(text, tmp)
-        info(f"Scène {W}×{H} · audio : voix {'oui' if audio['voice'] else 'non'}, musique {'oui' if audio['music'] else 'non'}"
-             f" · mode {'précis' if patched else 'de secours'}")
+        audio = extract_audio(text, tmp) if patched else {"voice": None, "music": None}
+        info(f"Fenêtre {W}×{H} · analyse HTML · mode candidat : {'synchronisé' if patched else 'universel'}")
 
         chrome = find_chrome()
         info("Démarrage de Chromium…")
-        proc, port = launch_chrome(chrome, tmp, W, H + 300)
+        proc, port = launch_chrome(chrome, tmp, W, H)
         cdp = CDP(page_ws_url(port))
         cdp.call("Page.enable")
-        cdp.call("Emulation.setDeviceMetricsOverride", width=W, height=H + 300, deviceScaleFactor=1, mobile=False)
+        cdp.call("Runtime.enable")
+        cdp.call("Emulation.setDeviceMetricsOverride", width=W, height=H, deviceScaleFactor=1, mobile=False)
         cdp.call("Page.navigate", url=page.as_uri())
 
-        info("Chargement de la page (Internet requis pour React et la police)…")
-        ready = "(()=>!!document.querySelector('.stage')&&document.querySelectorAll('audio').length>=1&&typeof D==='number')()"
+        info("Chargement du document HTML…")
         t0 = time.time()
-        while True:
+        ready = "(()=>({body:!!document.body,state:document.readyState}))()"
+        last_state = {}
+        while time.time() - t0 < 90:
             try:
-                if cdp.ev(ready, await_promise=False):
+                last_state = cdp.ev(ready, await_promise=False) or {}
+                if last_state.get("body") and last_state.get("state") == "complete":
+                    break
+                if last_state.get("body") and time.time() - t0 > 15:
+                    warn("La page n'a pas fini de charger toutes ses ressources ; essai de rendu avec le contenu disponible.")
                     break
             except RuntimeError:
                 pass
-            if time.time() - t0 > 90:
-                die("La page ne s'est pas chargée (pas d'Internet ? React/Sora inaccessibles).")
-            time.sleep(0.5)
+            time.sleep(0.25)
+        else:
+            die("Chromium n'a pas réussi à créer le document HTML.")
+        time.sleep(2.0)
 
-        cdp.ev(JS_HELPERS, await_promise=False)
-        cdp.ev("window.__prep()")
-        total = float(cdp.ev("D"))
-        dur = min(total, args.test) if args.test else total
-        fps = args.fps
-        n_frames = int(round(dur * fps))
-        info(f"Durée : {dur:.2f} s · {fps} i/s · {n_frames} images")
+        is_precise = False
+        if precise_candidate:
+            try:
+                is_precise = bool(cdp.ev("(()=>!!document.querySelector('.stage')&&document.querySelectorAll('audio').length>=1&&typeof D==='number'&&typeof window.__setT==='function')()", await_promise=False))
+            except RuntimeError:
+                is_precise = False
 
-        # Effets sonores recréés hors-ligne dans la page
-        audio_inputs = []
-        if audio["voice"]:
-            audio_inputs.append((audio["voice"], 1.0))
-        if audio["music"]:
-            audio_inputs.append((audio["music"], 0.2))  # volume utilisé par la page
-        try:
-            info("Génération des effets sonores…")
-            b64 = cdp.ev("window.__sfx()")
-            sfx = tmp / "sfx.wav"
-            write_wav(sfx, base64.b64decode(b64))
-            audio_inputs.append((sfx, 1.0))
-        except Exception as e:  # noqa: BLE001
-            warn(f"Effets sonores ignorés : {e}")
+        if is_precise:
+            cdp.ev(JS_HELPERS, await_promise=False)
+            cdp.ev("window.__prep()")
+            total = float(cdp.ev("D"))
+            dur = min(total, args.duration) if args.duration > 0 else total
+            if args.test > 0:
+                dur = min(dur, args.test)
+            fps = args.fps
+            n_frames = max(1, int(round(dur * fps)))
+            info(f"Mode synchronisé KIDAS · audio intégré détecté · durée {dur:.2f} s · {fps} i/s")
 
-        # Zone à capturer
-        cdp.ev("window.__seek(0)")
-        r = cdp.ev("(()=>{const r=document.querySelector('.stage').getBoundingClientRect();return [r.x,r.y,r.width,r.height]})()")
-        if abs(r[2] - W) > 2 or abs(r[3] - H) > 2:
-            warn(f"La scène mesure {r[2]:.0f}×{r[3]:.0f} au lieu de {W}×{H} : rendu possiblement flou.")
-        clip = {"x": round(r[0]), "y": round(r[1]), "width": W, "height": H, "scale": args.scale}
+            audio_inputs = []
+            if audio["voice"]:
+                audio_inputs.append((audio["voice"], 1.0))
+            if audio["music"]:
+                audio_inputs.append((audio["music"], 0.2))
+            try:
+                info("Génération des effets sonores KIDAS…")
+                b64 = cdp.ev("window.__sfx()")
+                sfx = tmp / "sfx.wav"
+                write_wav(sfx, base64.b64decode(b64))
+                audio_inputs.append((sfx, 1.0))
+            except Exception as e:  # noqa: BLE001
+                warn(f"Effets sonores KIDAS ignorés : {e}")
+
+            cdp.ev("window.__seek(0)")
+            r = cdp.ev("(()=>{const r=document.querySelector('.stage').getBoundingClientRect();return [r.x,r.y,r.width,r.height]})()")
+            if abs(r[2] - W) > 2 or abs(r[3] - H) > 2:
+                warn(f"La scène mesure {r[2]:.0f}×{r[3]:.0f} au lieu de {W}×{H} : rendu possiblement flou.")
+            clip = {"x": round(r[0]), "y": round(r[1]), "width": W, "height": H, "scale": args.scale}
+            mode = "synchronisé"
+        else:
+            # Mode générique : la page n'a besoin ni de .stage, ni de D, ni d'AUD/MUS.
+            if args.duration > 0:
+                dur = args.duration
+            else:
+                try:
+                    media_dur = cdp.ev("(()=>Math.max(0,...[...document.querySelectorAll('audio,video')].map(x=>x.duration).filter(x=>Number.isFinite(x)&&x>0)))()", await_promise=False)
+                except RuntimeError:
+                    media_dur = 0
+                dur = float(media_dur or 60.0)
+            if args.test > 0:
+                dur = min(dur, args.test)
+            fps = args.fps
+            n_frames = max(1, int(round(dur * fps)))
+            info(f"Mode universel · durée {dur:.2f} s · {fps} i/s · capture de la fenêtre")
+            clip = {"x": 0, "y": 0, "width": W, "height": H, "scale": args.scale}
+            audio_inputs = []
+            mode = "universel"
+            try:
+                cdp.ev("window.__h2mStart()")
+                info("Capture audio du navigateur activée (médias HTML et Web Audio si disponibles).")
+            except Exception as e:  # noqa: BLE001
+                warn(f"Capture audio indisponible : {e}")
 
         out_final = unique_path(html_path.with_suffix(".mp4") if not args.test else html_path.with_name(html_path.stem + "_test.mp4"))
         out_tmp = tmp / "out.mp4"
         err_path = tmp / "ffmpeg.log"
         enc = start_encoder(out_tmp, fps, n_frames / fps, audio_inputs, err_path)
 
-        info("Rendu en cours (Ctrl+C pour annuler)…")
-        start = time.time()
+        info(f"Rendu en cours ({mode})…")
+        start = time.monotonic()
+        slow_frames = 0
         for i in range(n_frames):
-            cdp.ev(f"window.__seek({i / fps:.5f})")
-            shot = cdp.call("Page.captureScreenshot", format="jpeg", quality=95, clip=clip)
+            if is_precise:
+                cdp.ev(f"window.__seek({i / fps:.5f})")
+            else:
+                target = start + i / fps
+                delay = target - time.monotonic()
+                if delay > 0:
+                    time.sleep(delay)
+            shot = cdp.call("Page.captureScreenshot", format="jpeg", quality=90, clip=clip)
             try:
                 enc.stdin.write(base64.b64decode(shot["data"]))
             except BrokenPipeError:
                 break
-            if i % 5 == 0 or i == n_frames - 1:
-                el = time.time() - start
-                eta = el / (i + 1) * (n_frames - i - 1)
+            if not is_precise and time.monotonic() > start + (i + 1) / fps:
+                slow_frames += 1
+            if i % max(1, fps // 2) == 0 or i == n_frames - 1:
+                elapsed = time.monotonic() - start
+                eta = elapsed / (i + 1) * (n_frames - i - 1)
                 sys.stdout.write(f"\r  {i + 1}/{n_frames}  {100 * (i + 1) / n_frames:5.1f}%  reste ≈ {fmt_time(eta)}   ")
                 sys.stdout.flush()
         print()
+
+        if not is_precise:
+            try:
+                captures = cdp.ev("window.__h2mStop()")
+                for idx, item in enumerate(captures or []):
+                    p = tmp / f"browser-audio-{idx}.webm"
+                    p.write_bytes(base64.b64decode(item["data"]))
+                    if p.stat().st_size > 500:
+                        audio_inputs.append((p, 1.0))
+                if audio_inputs:
+                    warn("Les pistes audio génériques sont incluses ; vérifie la synchronisation et les sons spécifiques de la page.")
+            except Exception as e:  # noqa: BLE001
+                warn(f"Impossible de récupérer la piste audio du navigateur : {e}")
+            if slow_frames:
+                warn(f"{slow_frames}/{n_frames} images ont dépassé l'intervalle cible ; une animation très complexe peut être accélérée dans la vidéo.")
+
         try:
             enc.stdin.close()
         except Exception:
             pass
         enc.wait()
         if enc.returncode != 0 or not out_tmp.exists():
-            die("FFmpeg a échoué :\n" + err_path.read_text(errors="ignore")[-600:])
+            die("FFmpeg a échoué :\n" + err_path.read_text(errors="ignore")[-1000:])
 
         shutil.move(str(out_tmp), str(out_final))
-        good(f"Terminé en {fmt_time(time.time() - start)} → {out_final}")
+        good(f"Terminé en {fmt_time(time.monotonic() - start)} → {out_final}")
         return out_final
     finally:
         if cdp:
@@ -619,7 +809,6 @@ def render(html_path, args):
             subprocess.call(["termux-wake-unlock"])
         shutil.rmtree(tmp, ignore_errors=True)
 
-
 # ----------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description="HTML animé → MP4")
@@ -628,6 +817,8 @@ def main():
     ap.add_argument("--fps", type=int, default=30, help="images par seconde (défaut 30)")
     ap.add_argument("--scale", type=float, default=1.0, help="échelle de sortie, ex. 0.5 = 540×960 (défaut 1)")
     ap.add_argument("--test", type=float, default=0, help="ne rendre que les N premières secondes")
+    ap.add_argument("--duration", type=float, default=0, help="durée maximale en secondes ; 0 = durée détectée ou 60 s en mode universel")
+    ap.add_argument("--format", choices=("auto", "portrait", "landscape", "square"), default="auto", help="format de sortie : auto, portrait, paysage ou carré")
     args = ap.parse_args()
 
     folder = Path(args.dossier).expanduser().resolve() if args.dossier else Path(__file__).resolve().parent
