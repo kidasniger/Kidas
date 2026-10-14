@@ -17,6 +17,20 @@ on:
       test:
         description: "Secondes à rendre (0 = vidéo entière)"
         default: "0"
+      duration:
+        description: "Durée maximale en secondes (0 = durée détectée, sinon 60 s en mode universel)"
+        required: false
+        default: "0"
+      format:
+        description: "Format de sortie"
+        type: choice
+        options:
+          - auto
+          - portrait
+          - landscape
+          - square
+        required: false
+        default: "auto"
       tag:
         description: "Identifiant de la vidéo (rempli par la page web)"
         required: false
@@ -31,6 +45,18 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+
+      - name: Récupérer le HTML importé depuis la branche dédiée
+        env:
+          FICHIER: ${{ inputs.fichier }}
+        run: |
+          case "$FICHIER" in
+            uploads/*)
+              git fetch --no-tags origin video-uploads
+              mkdir -p "$(dirname "$FICHIER")"
+              git show "FETCH_HEAD:$FICHIER" > "$FICHIER"
+              ;;
+          esac
 
       - uses: actions/setup-python@v5
         with:
@@ -48,7 +74,9 @@ jobs:
           FPS: ${{ inputs.fps }}
           SCALE: ${{ inputs.scale }}
           TEST: ${{ inputs.test }}
-        run: python html2mp4.py --file "$FICHIER" --fps "$FPS" --scale "$SCALE" --test "$TEST"
+          DURATION: ${{ inputs.duration }}
+          FORMAT: ${{ inputs.format }}
+        run: python html2mp4.py --file "$FICHIER" --fps "$FPS" --scale "$SCALE" --test "$TEST" --duration "$DURATION" --format "$FORMAT"
 
       - name: Publier le MP4 (artefact)
         uses: actions/upload-artifact@v4
