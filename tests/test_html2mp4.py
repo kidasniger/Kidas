@@ -22,6 +22,16 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertEqual(renderer.choose_frame_size(sample, "square"), (1080, 1080))
         self.assertEqual(renderer.choose_frame_size(sample, "auto"), (720, 1280))
 
+    def test_relative_asset_base_is_injected(self):
+        html = "<html><head></head><body><img src='assets/pic.png'></body></html>"
+        result = renderer.inject_base_url(html, "file:///tmp/source/")
+        self.assertIn('<base href="file:///tmp/source/">', result)
+        self.assertIn("assets/pic.png", result)
+
+    def test_existing_base_is_preserved(self):
+        html = '<html><head><base href="https://example.test/"></head></html>'
+        self.assertEqual(renderer.inject_base_url(html, "file:///tmp/source/"), html)
+
     def test_audio_capture_is_injected_before_page_scripts(self):
         html = "<html><head><script>window.pageCode=true</script></head><body></body></html>"
         result = renderer.inject_generic_audio_capture(html)
