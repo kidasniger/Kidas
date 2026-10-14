@@ -801,7 +801,7 @@ def render(html_path, args):
                         t_click = time.monotonic()
                         while time.monotonic() - t_click < 8:
                             try:
-                                started = cdp.ev(r"(() => {
+                                started = cdp.ev(r"""(() => {
                                   const ui = document.querySelector('#ui');
                                   return !!(ui && getComputedStyle(ui).display === 'none');
                                 })()""", await_promise=False)
