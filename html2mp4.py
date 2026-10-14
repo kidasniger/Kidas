@@ -411,7 +411,7 @@ def detect_html_duration(text):
     candidates = []
     patterns = (
         r"window\.__duration\s*=\s*(\d+(?:\.\d+)?)",
-        r"\b(?:const|let|var)\s+(?:DURATION|TOTAL_DURATION|totalDuration|videoDuration|durationSeconds)\s*=\s*(\d+(?:\.\d+)?)",
+        r"\b(?:const|let|var)\s+(?:duration|DURATION|TOTAL_DURATION|totalDuration|videoDuration|durationSeconds)\s*=\s*(\d+(?:\.\d+)?)",
     )
     for pattern in patterns:
         candidates.extend(float(x) for x in re.findall(pattern, text, re.I))
@@ -655,7 +655,9 @@ def verify_rendered_mp4(path, fps, expected_frames, expected_audio=False):
     actual_duration = float(video.get("duration") or data.get("format", {}).get("duration") or 0)
     expected_duration = expected_frames / fps
     frame_tolerance = max(2 / fps, 0.08)
-    if actual_frames and abs(actual_frames - expected_frames) > 1:
+    if actual_frames <= 0:
+        raise RuntimeError("Vérification MP4 : ffprobe n'a pas pu compter les images vidéo.")
+    if abs(actual_frames - expected_frames) > 1:
         raise RuntimeError(f"Vérification MP4 : {actual_frames} images produites au lieu de {expected_frames}.")
     if actual_duration and abs(actual_duration - expected_duration) > frame_tolerance:
         raise RuntimeError(f"Vérification MP4 : durée vidéo {actual_duration:.3f} s, attendue {expected_duration:.3f} s.")
@@ -1179,8 +1181,8 @@ def render(html_path, args):
         if enc.returncode != 0 or not out_tmp.exists():
             die("FFmpeg a échoué :\n" + err_path.read_text(errors="ignore")[-1000:])
 
+        verify_rendered_mp4(out_tmp, fps, n_frames, expected_audio=(bool(audio_inputs) or source_has_audio))
         shutil.move(str(out_tmp), str(out_final))
-        verify_rendered_mp4(out_final, fps, n_frames, expected_audio=(bool(audio_inputs) or source_has_audio))
         good(f"Terminé en {fmt_time(time.monotonic() - start)} → {out_final}")
         return out_final
     finally:
