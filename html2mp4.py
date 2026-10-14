@@ -780,19 +780,23 @@ def render(html_path, args):
                     cdp.call("Input.dispatchMouseEvent", type="mousePressed", x=target["x"], y=target["y"], button="left", clickCount=1)
                     cdp.call("Input.dispatchMouseEvent", type="mouseReleased", x=target["x"], y=target["y"], button="left", clickCount=1)
                     info(f"Bouton de démarrage activé automatiquement : {target['label']}")
-                    # Laisse les gestionnaires async (ex. décodage audio intégré) démarrer.
-                    t_click = time.monotonic()
-                    while time.monotonic() - t_click < 8:
-                        try:
-                            started = cdp.ev(r"(() => {
-                              const ui = document.querySelector('#ui');
-                              return !!(ui && getComputedStyle(ui).display === 'none');
-                            })()", await_promise=False)
-                            if started:
-                                break
-                        except RuntimeError:
-                            pass
-                        time.sleep(0.2)
+                    # Certains modèles décodent la narration de façon asynchrone après le clic.
+                    has_known_ui = bool(cdp.ev("!!document.querySelector('#ui')", await_promise=False))
+                    if has_known_ui:
+                        t_click = time.monotonic()
+                        while time.monotonic() - t_click < 8:
+                            try:
+                                started = cdp.ev(r"(() => {
+                                  const ui = document.querySelector('#ui');
+                                  return !!(ui && getComputedStyle(ui).display === 'none');
+                                })()", await_promise=False)
+                                if started:
+                                    break
+                            except RuntimeError:
+                                pass
+                            time.sleep(0.2)
+                    else:
+                        time.sleep(0.8)
                     time.sleep(0.3)
                 else:
                     info("Aucun bouton de démarrage évident trouvé ; capture de la page telle quelle.")
