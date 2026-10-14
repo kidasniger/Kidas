@@ -1,0 +1,50 @@
+name: Rendu vidéo
+
+on:
+  workflow_dispatch:
+    inputs:
+      fichier:
+        description: "Fichier HTML à convertir"
+        required: true
+        default: "kidas.html"
+      fps:
+        description: "Images par seconde"
+        default: "30"
+      scale:
+        description: "Échelle (1 = 1080x1920, 0.5 = 540x960)"
+        default: "1"
+      test:
+        description: "Secondes à rendre (0 = vidéo entière)"
+        default: "0"
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer FFmpeg et les dépendances
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install websocket-client
+
+      - name: Rendre la vidéo
+        env:
+          FICHIER: ${{ inputs.fichier }}
+          FPS: ${{ inputs.fps }}
+          SCALE: ${{ inputs.scale }}
+          TEST: ${{ inputs.test }}
+        run: python html2mp4.py --file "$FICHIER" --fps "$FPS" --scale "$SCALE" --test "$TEST"
+
+      - name: Publier le MP4
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-mp4
+          path: "*.mp4"
+          if-no-files-found: error
