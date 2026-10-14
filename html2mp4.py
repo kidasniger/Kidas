@@ -995,9 +995,8 @@ def render(html_path, args):
                   return {exposed:max(exposed), media:max(mediaDurations),
                     animation:max(animationDurations), svg:max(svgDurations)};
                 })()""");
-            } catch (e) {
-                warn("La durée du navigateur n'a pas pu être lue : " + e);
-            }
+            except Exception as e:  # noqa: BLE001
+                warn("La durée du navigateur n'a pas pu être lue : " + str(e))
             animation_duration = 0.0 if source_dynamic_clock else float(browser_duration.get("animation") or 0)
             const_durations = [source_duration, float(browser_duration.get("exposed") or 0),
                 float(browser_duration.get("media") or 0), animation_duration,
