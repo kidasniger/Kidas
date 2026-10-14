@@ -424,7 +424,7 @@ def detect_html_duration(text):
     ))
     dynamic_clock = bool(re.search(
         r"requestAnimationFrame|setTimeout|setInterval|AudioContext|createOscillator|"
-        r"<canvas\b|WebGL|gsap|lottie|framer.motion|three\.js",
+        r"<canvas\b|WebGL|gsap|lottie|framer.motion|three\.js|<script\b[^>]*\bsrc=",
         text, re.I
     ))
     if not infinite and not dynamic_clock:
