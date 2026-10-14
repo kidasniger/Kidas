@@ -783,6 +783,96 @@ def choose_frame_size(text, fmt):
     return sizes[fmt] if fmt in sizes else detect_stage_size(text)
 
 
+
+def choose_duration(detected, maximum=0, fallback=60):
+    """Utilise la durée détectée, la limite demandée ou la durée de secours."""
+    detected = float(detected or 0)
+    maximum = float(maximum or 0)
+    fallback = float(fallback or 60)
+    if maximum > 0:
+        return (min(detected, maximum) if detected > 0 else maximum,
+                "détection automatique avec limite" if detected > 0 else "durée choisie")
+    if detected > 0:
+        return detected, "détection automatique"
+    return fallback, "durée de secours"
+
+
+def ask_fallback_duration(default=60):
+    """En mode terminal, demande une durée si le fichier ne donne pas de durée fiable."""
+    if not sys.stdin.isatty():
+        return float(default)
+    choices = (10, 30, 60, 120, 300)
+    print()
+    print("Durée introuvable automatiquement.")
+    print("Choisis une durée de secours : " +
+          " / ".join(f"{v} s" for v in choices) + f" (défaut {int(default)} s).")
+    while True:
+        try:
+            raw = input("Durée en secondes : ").strip()
+            value = float(raw) if raw else float(default)
+            if 0 < value <= 3600:
+                return value
+        except (ValueError, EOFError):
+            pass
+        print("Entre une durée comprise entre 1 et 3600 secondes.")
+
+
+GENERIC_READY_JS = r"""(async () => {
+  const wait = promise => Promise.race([
+    Promise.resolve(promise).catch(() => null),
+    new Promise(resolve => setTimeout(resolve, 10000))
+  ]);
+  try { if (document.fonts && document.fonts.ready) await wait(document.fonts.ready); } catch (_) {}
+  await wait(Promise.all([...document.images].map(img =>
+    img.decode ? img.decode().catch(() => null) : Promise.resolve()
+  )));
+  const media = [...document.querySelectorAll('audio,video')];
+  await wait(Promise.all(media.map(el => el.readyState >= 1 ? Promise.resolve() :
+    new Promise(resolve => {
+      const done = () => resolve();
+      el.addEventListener('loadedmetadata', done, {once: true});
+      el.addEventListener('error', done, {once: true});
+      setTimeout(done, 10000);
+    }))));
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  return {images: document.images.length, media: media.length, ready: true};
+})()"""
+
+
+DURATION_DETECT_JS = r"""(() => {
+  const explicit = [];
+  const observed = [];
+  const add = (list, value, source) => {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0.05 && n <= 3600) list.push({duration: n, source});
+  };
+  try { if (typeof window.__duration !== 'undefined') add(explicit, window.__duration, 'window.__duration'); } catch (_) {}
+  try { if (typeof window.__video !== 'undefined' && window.__video) add(explicit, window.__video.duration, 'window.__video.duration'); } catch (_) {}
+  try { if (typeof D !== 'undefined') add(explicit, D, 'variable D'); } catch (_) {}
+  try { if (typeof DUR !== 'undefined') add(explicit, DUR, 'variable DUR'); } catch (_) {}
+  try { if (typeof duration !== 'undefined') add(explicit, duration, 'variable duration'); } catch (_) {}
+  for (const el of [document.documentElement, document.body, ...document.querySelectorAll('[data-duration]')]) {
+    if (el && el.dataset && el.dataset.duration) add(explicit, el.dataset.duration, 'data-duration');
+  }
+  for (const media of document.querySelectorAll('audio,video')) {
+    if (Number.isFinite(media.duration) && media.duration > 0) add(observed, media.duration, 'média HTML');
+  }
+  try {
+    for (const animation of document.getAnimations({subtree: true})) {
+      const timing = animation.effect && animation.effect.getComputedTiming();
+      if (timing && Number.isFinite(timing.endTime) && timing.endTime > 0) {
+        add(observed, timing.endTime / 1000, 'animation CSS/WAAPI');
+      }
+    }
+  } catch (_) {}
+  const pick = list => list.reduce((best, item) =>
+    !best || item.duration > best.duration ? item : best, null);
+  const result = pick(explicit) || pick(observed);
+  return result ? {duration: result.duration, source: result.source} :
+    {duration: 0, source: 'inconnue'};
+})()"""
+
+
 def render(html_path, args):
     tmp = Path(tempfile.mkdtemp(prefix="html2mp4_"))
     chrome = proc = cdp = enc = None
@@ -898,20 +988,28 @@ def render(html_path, args):
             clip = {"x": round(r[0]), "y": round(r[1]), "width": W, "height": H, "scale": args.scale}
             mode = "synchronisé"
         else:
-            # Mode générique : la page n'a besoin ni de .stage, ni de D, ni d'AUD/MUS.
-            if args.duration > 0:
-                dur = args.duration
+            # Attend les métadonnées, puis détecte la durée déclarée et les durées observables.
+            try:
+                cdp.ev(GENERIC_READY_JS)
+            except Exception as e:  # noqa: BLE001
+                warn(f"Certaines ressources n'ont pas fini de charger : {e}")
+            try:
+                detected = cdp.ev(DURATION_DETECT_JS, await_promise=False) or {}
+            except Exception:  # noqa: BLE001
+                detected = {}
+            detected_duration = float(detected.get("duration") or 0)
+            if detected_duration <= 0 and args.duration <= 0:
+                fallback = ask_fallback_duration(args.fallback_duration)
+                dur, duration_source = choose_duration(0, 0, fallback)
             else:
-                try:
-                    media_dur = cdp.ev("(()=>Math.max(0,...[...document.querySelectorAll('audio,video')].map(x=>x.duration).filter(x=>Number.isFinite(x)&&x>0)))()", await_promise=False)
-                except RuntimeError:
-                    media_dur = 0
-                dur = float(media_dur or 60.0)
+                dur, duration_source = choose_duration(
+                    detected_duration, args.duration, args.fallback_duration
+                )
             if args.test > 0:
                 dur = min(dur, args.test)
             fps = args.fps
             n_frames = max(1, int(round(dur * fps)))
-            info(f"Mode universel · durée {dur:.2f} s · {fps} i/s · capture de la fenêtre")
+            info(f"Mode universel · durée {dur:.2f} s ({duration_source}) · {fps} i/s · capture horodatée")
             clip = {"x": 0, "y": 0, "width": W, "height": H, "scale": args.scale}
             audio_inputs = []
             mode = "universel"
@@ -963,6 +1061,22 @@ def render(html_path, args):
                 else:
                     info("Aucun bouton de démarrage évident trouvé ; capture de la page telle quelle.")
 
+                # Refaire la détection après l'activation : certaines pages ne définissent
+                # leur durée qu'au clic sur « Démarrer ». Lancer l'enregistreur après ce contrôle.
+                if args.duration <= 0:
+                    try:
+                        activated = cdp.ev(DURATION_DETECT_JS, await_promise=False) or {}
+                        activated_duration = float(activated.get("duration") or 0)
+                        if activated_duration > 0:
+                            dur, duration_source = choose_duration(
+                                activated_duration, 0, args.fallback_duration
+                            )
+                            if args.test > 0:
+                                dur = min(dur, args.test)
+                            n_frames = max(1, int(round(dur * fps)))
+                            info(f"Durée après activation : {dur:.2f} s ({duration_source}).")
+                    except Exception:  # noqa: BLE001
+                        pass
                 cdp.ev("window.__h2mStart()")
                 info("Capture audio du navigateur activée (médias HTML et Web Audio si disponibles).")
             except Exception as e:  # noqa: BLE001
@@ -1097,7 +1211,8 @@ def main():
     ap.add_argument("--fps", type=int, default=30, help="images par seconde (défaut 30)")
     ap.add_argument("--scale", type=float, default=1.0, help="échelle de sortie, ex. 0.5 = 540×960 (défaut 1)")
     ap.add_argument("--test", type=float, default=0, help="ne rendre que les N premières secondes")
-    ap.add_argument("--duration", type=float, default=0, help="durée maximale en secondes ; 0 = durée détectée ou 60 s en mode universel")
+    ap.add_argument("--duration", type=float, default=0, help="durée maximale en secondes ; 0 = détection automatique")
+    ap.add_argument("--fallback-duration", type=float, default=60, help="durée utilisée si le mode universel ne détecte aucune durée")
     ap.add_argument("--format", choices=("auto", "portrait", "landscape", "square"), default="auto", help="format de sortie : auto, portrait, paysage ou carré")
     args = ap.parse_args()
 
