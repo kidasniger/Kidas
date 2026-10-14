@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: html-render-regression
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
