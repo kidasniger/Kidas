@@ -1,4 +1,5 @@
 name: Rendu vidéo
+run-name: Rendu ${{ inputs.tag || inputs.fichier }}
 
 on:
   workflow_dispatch:
@@ -16,6 +17,13 @@ on:
       test:
         description: "Secondes à rendre (0 = vidéo entière)"
         default: "0"
+      tag:
+        description: "Identifiant de la vidéo (rempli par la page web)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
 
 jobs:
   render:
@@ -42,9 +50,19 @@ jobs:
           TEST: ${{ inputs.test }}
         run: python html2mp4.py --file "$FICHIER" --fps "$FPS" --scale "$SCALE" --test "$TEST"
 
-      - name: Publier le MP4
+      - name: Publier le MP4 (artefact)
         uses: actions/upload-artifact@v4
         with:
           name: video-mp4
-          path: "*.mp4"
+          path: "**/*.mp4"
           if-no-files-found: error
+
+      - name: Publier le MP4 (Release, pour la page web)
+        if: ${{ inputs.tag != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh release create "$TAG" $(find . -name '*.mp4' -not -path './.git/*') \
+            --title "Vidéo $TAG" --notes "Générée par le workflow Rendu vidéo."

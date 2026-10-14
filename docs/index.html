@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HTML → MP4 · Kidas</title>
+<style>
+:root{--bg:#f4f6ff;--card:#fff;--tx:#0a1640;--mut:#5a6699;--ac:#2b59ff;--on:#fff;--ok:#12805c;--err:#c0392b;--bd:#d9def5;color-scheme:light}
+@media(prefers-color-scheme:dark){:root{--bg:#070f2e;--card:#0f1b4d;--tx:#f4f6ff;--mut:#9aa7d6;--ac:#6c8cff;--on:#070f2e;--ok:#4cd6a1;--err:#ff8a7a;--bd:#26357f;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:560px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:1.4rem;margin:8px 0 2px}
+.sub{color:var(--mut);margin:0 0 18px;font-size:.92rem}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:14px}
+label{display:block;font-weight:600;margin:10px 0 6px;font-size:.92rem}
+input[type=password],input[type=text],select,input[type=file]{width:100%;padding:10px;border:1px solid var(--bd);border-radius:10px;background:transparent;color:var(--tx);font:inherit}
+button{font:inherit;font-weight:700;border:0;border-radius:999px;padding:12px 20px;background:var(--ac);color:var(--on);width:100%;margin-top:14px}
+button.sec{background:transparent;color:var(--ac);border:1px solid var(--bd);width:auto;margin:0;padding:6px 14px}
+button:disabled{opacity:.5}
+a{color:var(--ac)}
+small,.mut{color:var(--mut)}
+#st{font-weight:600;margin:0}
+#st.ok{color:var(--ok)}#st.err{color:var(--err)}
+video{width:100%;max-height:70vh;border-radius:12px;background:#000;margin-top:10px}
+ul{padding-left:18px;margin:8px 0 0}
+li{margin:4px 0}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <h1>HTML → MP4</h1>
+  <p class="sub">Importe ton animation HTML, la vidéo est générée par GitHub.</p>
+
+  <section class="card">
+    <div id="tokEdit">
+      <label for="tok">Jeton GitHub (une seule fois)</label>
+      <input id="tok" type="password" autocomplete="off" placeholder="github_pat_…">
+      <small>Reste dans ce navigateur. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Créer un jeton</a> limité au dépôt Kidas, avec <b>Contents</b> et <b>Actions</b> en lecture/écriture.</small>
+      <button id="tokSave" type="button">Enregistrer le jeton</button>
+    </div>
+    <div id="tokOk" hidden style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <span>Jeton enregistré ✓</span>
+      <button class="sec" id="tokDel" type="button">Changer</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <label for="file">Fichier HTML</label>
+    <input id="file" type="file" accept=".html,.htm,text/html">
+    <label for="mode">Qualité</label>
+    <select id="mode">
+      <option value="full">Vidéo complète · 1080×1920</option>
+      <option value="half">Vidéo complète allégée · 540×960</option>
+      <option value="test">Aperçu rapide · 10 s · 540×960</option>
+    </select>
+    <button id="go" type="button">Générer la vidéo</button>
+  </section>
+
+  <section class="card">
+    <p id="st" class="mut">Prêt.</p>
+    <p id="stl" hidden><a id="stla" target="_blank" rel="noopener">Voir le journal du rendu</a></p>
+    <div id="res"></div>
+  </section>
+
+  <section class="card">
+    <b>Vidéos générées</b>
+    <ul id="list"><li class="mut">Chargement…</li></ul>
+  </section>
+</main>
+
+<script>
+const OWNER = 'kidasniger', REPO = 'Kidas', BRANCH = 'main';
+const API = `https://api.github.com/repos/${OWNER}/${REPO}`;
+const MODES = {
+  full: { scale: '1',   test: '0'  },
+  half: { scale: '0.5', test: '0'  },
+  test: { scale: '0.5', test: '10' }
+};
+const $ = s => document.querySelector(s);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let token = '';
+try { token = localStorage.getItem('gh_token') || ''; } catch (e) {}
+
+function renderToken() { $('#tokEdit').hidden = !!token; $('#tokOk').hidden = !token; }
+function saveToken(v) {
+  token = v.trim();
+  try { token ? localStorage.setItem('gh_token', token) : localStorage.removeItem('gh_token'); } catch (e) {}
+  renderToken();
+}
+function status(msg, cls, url) {
+  const s = $('#st'); s.textContent = msg; s.className = cls || 'mut';
+  $('#stl').hidden = !url; if (url) $('#stla').href = url;
+}
+
+async function gh(path, opts = {}) {
+  const headers = { 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+  if (token) headers.Authorization = 'Bearer ' + token;
+  if (opts.body) headers['Content-Type'] = 'application/json';
+  const r = await fetch(API + path, { ...opts, headers });
+  if (r.status === 204) return null;
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j.message || ('Erreur ' + r.status)); e.status = r.status; throw e; }
+  return j;
+}
+
+function toB64(buf) {
+  const u = new Uint8Array(buf); let s = '';
+  for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function explain(e) {
+  if (e.status === 401) return 'Jeton refusé ou expiré. Clique sur « Changer » et colle un nouveau jeton.';
+  if (e.status === 403 || e.status === 404) return 'Droits insuffisants : le jeton doit avoir Contents et Actions en lecture/écriture sur le dépôt Kidas.';
+  return e.message;
+}
+const mmss = ms => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+
+async function waitRelease(id) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < 95 * 60000) {
+    await sleep(8000);
+    const d = await gh('/actions/runs?event=workflow_dispatch&per_page=10');
+    const run = d.workflow_runs.find(r => r.display_title === 'Rendu ' + id);
+    const el = mmss(Date.now() - t0);
+    if (!run) { status('Démarrage du rendu… (' + el + ')'); continue; }
+    if (run.status !== 'completed') {
+      status((run.status === 'queued' ? 'En file d’attente… ' : 'Rendu en cours… ') + '(' + el + ')', null, run.html_url);
+      continue;
+    }
+    if (run.conclusion !== 'success') {
+      const e = new Error('Le rendu a échoué.'); e.url = run.html_url; throw e;
+    }
+    return gh('/releases/tags/' + id);
+  }
+  throw new Error('Délai dépassé (plus de 95 minutes).');
+}
+
+function showResult(rel) {
+  const a = (rel.assets || []).find(x => x.name.toLowerCase().endsWith('.mp4'));
+  const box = $('#res'); box.textContent = '';
+  if (!a) { box.textContent = 'Rendu terminé, mais aucun MP4 trouvé dans la publication.'; return; }
+  const v = document.createElement('video');
+  v.controls = true; v.playsInline = true; v.preload = 'metadata'; v.src = a.browser_download_url;
+  const dl = document.createElement('a');
+  dl.href = a.browser_download_url; dl.textContent = 'Télécharger le MP4 (' + (a.size / 1048576).toFixed(1) + ' Mo)';
+  dl.style.cssText = 'display:inline-block;margin-top:10px;font-weight:700';
+  box.append(v, dl);
+}
+
+async function loadList() {
+  const ul = $('#list');
+  try {
+    const rels = await gh('/releases?per_page=8');
+    ul.textContent = '';
+    const items = rels.filter(r => (r.assets || []).some(x => x.name.toLowerCase().endsWith('.mp4')));
+    if (!items.length) { ul.innerHTML = '<li class="mut">Aucune vidéo pour l’instant.</li>'; return; }
+    for (const r of items) {
+      const a = r.assets.find(x => x.name.toLowerCase().endsWith('.mp4'));
+      const li = document.createElement('li'), l = document.createElement('a');
+      l.href = a.browser_download_url; l.textContent = a.name;
+      const d = document.createElement('small');
+      d.textContent = ' · ' + new Date(r.created_at).toLocaleString('fr-FR') + ' · ' + (a.size / 1048576).toFixed(1) + ' Mo';
+      li.append(l, d); ul.append(li);
+    }
+  } catch (e) { ul.innerHTML = '<li class="mut">Liste indisponible.</li>'; }
+}
+
+async function go() {
+  const f = $('#file').files[0];
+  if (!token) return status('Ajoute d’abord ton jeton GitHub.', 'err');
+  if (!f) return status('Choisis un fichier HTML.', 'err');
+  if (f.size > 50e6) return status('Fichier trop gros (50 Mo maximum).', 'err');
+  const m = MODES[$('#mode').value];
+  const id = 'v' + Date.now().toString(36);
+  $('#go').disabled = true; $('#res').textContent = '';
+  try {
+    status('Envoi du fichier…');
+    await gh(`/contents/uploads/${id}.html`, { method: 'PUT',
+      body: JSON.stringify({ message: 'Import ' + id, content: toB64(await f.arrayBuffer()), branch: BRANCH }) });
+    status('Lancement du rendu…');
+    await sleep(2500);
+    await gh('/actions/workflows/render.yml/dispatches', { method: 'POST',
+      body: JSON.stringify({ ref: BRANCH, inputs: { fichier: `uploads/${id}.html`, fps: '30', scale: m.scale, test: m.test, tag: id } }) });
+    const rel = await waitRelease(id);
+    showResult(rel);
+    status('Terminé ✓', 'ok');
+    loadList();
+  } catch (e) {
+    status(explain(e), 'err', e.url);
+  }
+  $('#go').disabled = false;
+}
+
+$('#tokSave').onclick = () => { const v = $('#tok').value; if (v.trim()) { saveToken(v); $('#tok').value = ''; } };
+$('#tokDel').onclick = () => saveToken('');
+$('#go').onclick = go;
+renderToken();
+loadList();
+</script>
+</body>
+</html>
