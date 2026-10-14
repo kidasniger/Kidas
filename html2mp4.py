@@ -742,7 +742,9 @@ def render(html_path, args):
         out_final = unique_path(html_path.with_suffix(".mp4") if not args.test else html_path.with_name(html_path.stem + "_test.mp4"))
         out_tmp = tmp / "out.mp4"
         err_path = tmp / "ffmpeg.log"
-        enc = start_encoder(out_tmp, fps, n_frames / fps, audio_inputs, err_path)
+        frame_files = []
+        if is_precise:
+            enc = start_encoder(out_tmp, fps, n_frames / fps, audio_inputs, err_path)
 
         info(f"Rendu en cours ({mode})…")
         start = time.monotonic()
@@ -756,10 +758,16 @@ def render(html_path, args):
                 if delay > 0:
                     time.sleep(delay)
             shot = cdp.call("Page.captureScreenshot", format="jpeg", quality=90, clip=clip)
-            try:
-                enc.stdin.write(base64.b64decode(shot["data"]))
-            except BrokenPipeError:
-                break
+            jpeg = base64.b64decode(shot["data"])
+            if is_precise:
+                try:
+                    enc.stdin.write(jpeg)
+                except BrokenPipeError:
+                    break
+            else:
+                frame_path = tmp / f"frame-{i:06d}.jpg"
+                frame_path.write_bytes(jpeg)
+                frame_files.append(frame_path)
             if not is_precise and time.monotonic() > start + (i + 1) / fps:
                 slow_frames += 1
             if i % max(1, fps // 2) == 0 or i == n_frames - 1:
@@ -783,6 +791,19 @@ def render(html_path, args):
                 warn(f"Impossible de récupérer la piste audio du navigateur : {e}")
             if slow_frames:
                 warn(f"{slow_frames}/{n_frames} images ont dépassé l'intervalle cible ; une animation très complexe peut être accélérée dans la vidéo.")
+
+        if not is_precise:
+            info("Assemblage des images et de l'audio…")
+            enc = start_encoder(out_tmp, fps, n_frames / fps, audio_inputs, err_path)
+            for idx, frame_path in enumerate(frame_files):
+                try:
+                    enc.stdin.write(frame_path.read_bytes())
+                except BrokenPipeError:
+                    break
+                if idx % max(1, fps * 5) == 0 or idx == len(frame_files) - 1:
+                    sys.stdout.write(f"\r  Assemblage {idx + 1}/{len(frame_files)}")
+                    sys.stdout.flush()
+            print()
 
         try:
             enc.stdin.close()
