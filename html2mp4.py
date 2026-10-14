@@ -656,7 +656,7 @@ def render(html_path, args):
             patched
             and bool(re.search(r"\.stage\s*\{", text))
             and bool(re.search(r"\bD\s*=", text))
-            and bool(re.search(r"<audio\b", text, flags=re.I))
+            and bool(re.search(r"\bAUD\s*=", text))
         )
         W, H = choose_frame_size(text, "auto" if precise_candidate else args.format)
         page = tmp / "page.html"
