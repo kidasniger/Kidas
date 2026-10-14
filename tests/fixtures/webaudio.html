@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>html,body{margin:0;width:100%;height:100%;background:#102820;color:white;font:32px sans-serif;display:grid;place-items:center}</style></head>
+<body><div>Web Audio capture test</div><script>
+const ctx=new AudioContext();const osc=ctx.createOscillator();const gain=ctx.createGain();osc.type='sine';osc.frequency.value=440;gain.gain.value=.08;osc.connect(gain);gain.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+3);
+</script></body></html>
