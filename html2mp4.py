@@ -652,14 +652,19 @@ def render(html_path, args):
 
         text = html_path.read_text(encoding="utf-8", errors="ignore")
         text, patched = patch_html(text)
-        precise_candidate = patched and bool(re.search(r"\.stage\s*\{", text))
-        W, H = choose_frame_size(text, "auto" if patched else args.format)
+        precise_candidate = (
+            patched
+            and bool(re.search(r"\.stage\s*\{", text))
+            and bool(re.search(r"\bD\s*=", text))
+            and bool(re.search(r"<audio\b", text, flags=re.I))
+        )
+        W, H = choose_frame_size(text, "auto" if precise_candidate else args.format)
         page = tmp / "page.html"
         text = inject_base_url(text, html_path.parent.resolve().as_uri().rstrip("/") + "/")
-        if not patched:
+        if not precise_candidate:
             text = inject_generic_audio_capture(text)
         page.write_text(text, encoding="utf-8")
-        audio = extract_audio(text, tmp) if patched else {"voice": None, "music": None}
+        audio = extract_audio(text, tmp) if precise_candidate else {"voice": None, "music": None}
         info(f"Fenêtre {W}×{H} · analyse HTML · mode candidat : {'synchronisé' if patched else 'universel'}")
 
         chrome = find_chrome()
