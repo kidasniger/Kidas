@@ -1072,7 +1072,7 @@ def render(html_path, args):
                 if i % max(1, fps // 2) == 0 or i == n_frames - 1:
                     elapsed = time.monotonic() - start
                     eta = elapsed / (i + 1) * (n_frames - i - 1)
-                    sys.stdout.write(f"\\r  {i + 1}/{n_frames}  {100 * (i + 1) / n_frames:5.1f}%  reste ≈ {fmt_time(eta)}   ")
+                    sys.stdout.write(f"\r  {i + 1}/{n_frames}  {100 * (i + 1) / n_frames:5.1f}%  reste ≈ {fmt_time(eta)}   ")
                     sys.stdout.flush()
         else:
             # Les captures lentes sont répétées à l'assemblage, jamais comprimées dans le temps.
@@ -1095,7 +1095,7 @@ def render(html_path, args):
                     slow_frames += 1
                 if len(frame_samples) % max(1, fps // 2) == 0:
                     percent = min(100.0, elapsed / dur * 100)
-                    sys.stdout.write(f"\\r  Capture {percent:5.1f}% · {len(frame_samples)} images")
+                    sys.stdout.write(f"\r  Capture {percent:5.1f}% · {len(frame_samples)} images")
                     sys.stdout.flush()
         print()
 
@@ -1128,7 +1128,7 @@ def render(html_path, args):
                 except BrokenPipeError:
                     break
                 if idx % max(1, fps * 5) == 0 or idx == n_frames - 1:
-                    sys.stdout.write(f"\\r  Assemblage {idx + 1}/{n_frames}")
+                    sys.stdout.write(f"\r  Assemblage {idx + 1}/{n_frames}")
                     sys.stdout.flush()
             print()
 
