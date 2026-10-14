@@ -24,6 +24,20 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertEqual(renderer.choose_frame_size(sample, "square"), (1080, 1080))
         self.assertEqual(renderer.choose_frame_size(sample, "auto"), (720, 1280))
 
+    def test_duration_selection_prefers_detection_and_respects_limit(self):
+        self.assertEqual(renderer.choose_duration(42, 0, 60), (42.0, "détection automatique"))
+        self.assertEqual(renderer.choose_duration(42, 20, 60), (20.0, "détection automatique avec limite"))
+        self.assertEqual(renderer.choose_duration(0, 20, 60), (20.0, "durée choisie"))
+        self.assertEqual(renderer.choose_duration(0, 0, 120), (120.0, "durée de secours"))
+
+    def test_timestamped_capture_repeats_latest_frame_without_compressing_time(self):
+        samples = [(0.0, Path("frame0.jpg")), (0.1, Path("frame1.jpg")), (0.4, Path("frame2.jpg"))]
+        self.assertEqual(renderer.frame_sample_index(samples, 0.0), 0)
+        self.assertEqual(renderer.frame_sample_index(samples, 0.2), 1)
+        self.assertEqual(renderer.frame_sample_index(samples, 0.5), 2)
+        self.assertIn("document.getAnimations", renderer.DURATION_DETECT_JS)
+        self.assertIn("querySelectorAll('audio,video')", renderer.DURATION_DETECT_JS)
+
     def test_relative_asset_base_is_injected(self):
         html = "<html><head></head><body><img src='assets/pic.png'></body></html>"
         result = renderer.inject_base_url(html, "file:///tmp/source/")
