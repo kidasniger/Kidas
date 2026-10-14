@@ -207,6 +207,14 @@ function guessDuration(t) {
     const n = Number(m[1]);
     if (Number.isFinite(n) && n > 0 && n <= 3600) values.push(n);
   }
+  for (const m of t.matchAll(/(?:animation-duration|animation)\\s*:[^;{}]*?(\\d+(?:\\.\\d+)?)\\s*(ms|s)\\b/gi)) {
+    const n = Number(m[1]) / (m[2].toLowerCase() === 'ms' ? 1000 : 1);
+    if (Number.isFinite(n) && n > 0 && n <= 3600) values.push(n);
+  }
+  for (const m of t.matchAll(/\\bt\\s*>=\\s*(\\d+(?:\\.\\d+)?)/g)) {
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n > 0 && n <= 3600) values.push(n);
+  }
   return values.length ? Math.max(...values) : null;
 }
 function analyze(t) {
