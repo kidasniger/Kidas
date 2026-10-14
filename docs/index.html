@@ -126,18 +126,28 @@ progress{width:100%;height:8px;accent-color:var(--ac)}
         </select>
       </div>
       <div>
-        <label for="duration">Durée maximale</label>
+        <label for="duration">Limite de durée</label>
         <select id="duration">
-          <option value="0">Automatique</option>
-          <option value="10">10 secondes</option>
-          <option value="30">30 secondes</option>
-          <option value="60">60 secondes</option>
-          <option value="120">2 minutes</option>
-          <option value="300">5 minutes</option>
+          <option value="0">Automatique · durée complète</option>
+          <option value="10">Maximum 10 secondes</option>
+          <option value="30">Maximum 30 secondes</option>
+          <option value="60">Maximum 60 secondes</option>
+          <option value="120">Maximum 2 minutes</option>
+          <option value="300">Maximum 5 minutes</option>
+        </select>
+      </div>
+      <div>
+        <label for="fallbackDuration">Si la durée est introuvable</label>
+        <select id="fallbackDuration">
+          <option value="10">Choisir 10 secondes</option>
+          <option value="30">Choisir 30 secondes</option>
+          <option value="60" selected>Choisir 60 secondes (défaut)</option>
+          <option value="120">Choisir 2 minutes</option>
+          <option value="300">Choisir 5 minutes</option>
         </select>
       </div>
     </div>
-    <small>Les fichiers reconnus (KIDAS, EditPro, Vidéo React) sont rendus image par image avec leur son : synchronisation garantie, la durée vient du fichier. Format et durée ne servent que pour les autres pages (mode universel, synchro non garantie).</small>
+    <small>La durée est détectée après le chargement à partir des informations du HTML, des médias et des animations finies. Si aucune durée fiable n’est trouvée, la durée de secours sélectionnée sera utilisée. Les pages génériques restent capturées en temps réel ; leur rendu n’est pas déterministe comme les profils spécialisés.</small>
     <button id="go" type="button">3. Générer la vidéo</button>
     <button id="cancel" class="danger" type="button" hidden>Annuler le rendu</button>
   </section>
@@ -408,7 +418,7 @@ async function go() {
     step = 1; setSteps(1); status('Lancement du rendu…');
     await sleep(2500);
     await gh('/actions/workflows/render.yml/dispatches', { method: 'POST',
-      body: JSON.stringify({ ref: BRANCH, inputs: { fichier: `uploads/${id}.html`, fps: $('#fps').value, scale: m.scale, test: m.test, duration: $('#duration').value, format: $('#format').value, tag: id } }) });
+      body: JSON.stringify({ ref: BRANCH, inputs: { fichier: `uploads/${id}.html`, fps: $('#fps').value, scale: m.scale, test: m.test, duration: $('#duration').value, fallback_duration: $('#fallbackDuration').value, format: $('#format').value, tag: id } }) });
     store.set('kidas_job', JSON.stringify({ id, t0 }));
     step = 2;
     await finish(await waitRelease(id, t0));
