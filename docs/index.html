@@ -196,14 +196,15 @@ function estimateDuration(t) {
     }
   };
   addMatches(/window\.__duration\s*=\s*(\d+(?:\.\d+)?)/gi);
-  addMatches(/\b(?:const|let|var)\s+(?:DURATION|TOTAL_DURATION|totalDuration|videoDuration|durationSeconds)\s*=\s*(\d+(?:\.\d+)?)/g);
+  addMatches(/\b(?:const|let|var)\s+(?:duration|DURATION|TOTAL_DURATION|totalDuration|videoDuration|durationSeconds)\s*=\s*(\d+(?:\.\d+)?)/g);
   if (t.includes('const [t,setT]=useState(0),') && /\bAUD\s*=\s*'data:audio\//.test(t))
     addMatches(/\bD\s*=\s*(\d+(?:\.\d+)?)/g);
   if (t.includes('function render(t)'))
     addMatches(/if\s*\(\s*t\s*>=\s*(\d+(?:\.\d+)?)\s*\)\s*\{\s*t\s*=/g);
 
   const infinite = /animation-iteration-count\s*:\s*infinite|animation\s*:[^;{}]*\binfinite\b/i.test(t);
-  if (!infinite) {
+  const dynamicClock = /requestAnimationFrame|setTimeout|setInterval|AudioContext|createOscillator|<canvas\b|WebGL|gsap|lottie|framer.motion|three\.js/i.test(t);
+  if (!infinite && !dynamicClock) {
     for (const declaration of t.matchAll(/animation-duration\s*:\s*([^;}]+)/gi)) {
       for (const m of declaration[1].matchAll(/(\d+(?:\.\d+)?)\s*(ms|s)\b/gi)) {
         const n = Number(m[1]) / (m[2].toLowerCase() === 'ms' ? 1000 : 1);
