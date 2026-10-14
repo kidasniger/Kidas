@@ -563,6 +563,7 @@ GENERIC_AUDIO_CAPTURE = r"""<script>
     } catch (_) {}
   }
   window.__h2mStart = async () => {
+    if (active) return contexts.length;
     active = true;
     if (Native) {
       for (const el of document.querySelectorAll('audio,video')) {
@@ -610,6 +611,7 @@ GENERIC_AUDIO_CAPTURE = r"""<script>
     }
     return result;
   };
+  window.addEventListener('load', () => { try { window.__h2mStart(); } catch (_) {} }, { once: true });
 })();
 </script>"""
 
@@ -638,10 +640,9 @@ def render(html_path, args):
             subprocess.call(["termux-wake-lock"])
 
         text = html_path.read_text(encoding="utf-8", errors="ignore")
-        original_text = text
         text, patched = patch_html(text)
         precise_candidate = patched and bool(re.search(r"\.stage\s*\{", text))
-        W, H = choose_frame_size(text, args.format)
+        W, H = choose_frame_size(text, "auto" if patched else args.format)
         page = tmp / "page.html"
         if not patched:
             text = inject_generic_audio_capture(text)
@@ -675,7 +676,7 @@ def render(html_path, args):
             time.sleep(0.25)
         else:
             die("Chromium n'a pas réussi à créer le document HTML.")
-        time.sleep(2.0)
+        time.sleep(0.2)
 
         is_precise = False
         if precise_candidate:
