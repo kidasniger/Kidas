@@ -834,6 +834,7 @@ DURATION_DETECT_JS = r"""(() => {
     if (Number.isFinite(n) && n > 0.05 && n <= 3600) list.push({duration: n, source});
   };
   try { if (typeof window.__duration !== 'undefined') add(explicit, window.__duration, 'window.__duration'); } catch (_) {}
+  try { if (window.__video && typeof window.__video.duration !== 'undefined') add(explicit, window.__video.duration, 'window.__video.duration'); } catch (_) {}
   try { if (typeof D !== 'undefined') add(explicit, D, 'variable D'); } catch (_) {}
   try { if (typeof duration !== 'undefined') add(explicit, duration, 'variable duration'); } catch (_) {}
   for (const el of [document.documentElement, document.body, ...document.querySelectorAll('[data-duration]')]) {
@@ -1078,9 +1079,9 @@ def render(html_path, args):
             # Les captures lentes sont répétées à l'assemblage, jamais comprimées dans le temps.
             next_capture = start
             while time.monotonic() - start < dur or not frame_samples:
-                now = time.monotonic()
-                timestamp = max(0.0, now - start)
                 shot = cdp.call("Page.captureScreenshot", format="jpeg", quality=90, clip=clip)
+                # L'image correspond à l'état de la page à la fin de la capture CDP.
+                timestamp = max(0.0, time.monotonic() - start)
                 frame_path = tmp / f"frame-{len(frame_samples):06d}.jpg"
                 frame_path.write_bytes(base64.b64decode(shot["data"]))
                 frame_samples.append((min(timestamp, dur), frame_path))
