@@ -809,10 +809,9 @@ def render(html_path, args):
                                     break
                             except RuntimeError:
                                 pass
-                            time.sleep(0.2)
+                            time.sleep(0.03)
                     else:
-                        time.sleep(0.8)
-                    time.sleep(0.3)
+                        time.sleep(0.3)
                 else:
                     info("Aucun bouton de démarrage évident trouvé ; capture de la page telle quelle.")
 
