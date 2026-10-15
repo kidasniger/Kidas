@@ -1,0 +1,30 @@
+name = "kidas-public-api"
+main = "src/index.js"
+compatibility_date = "2026-10-15"
+workers_dev = true
+
+[vars]
+ALLOWED_ORIGINS = "https://kidasniger.github.io"
+
+[[r2_buckets]]
+binding = "KIDAS_JOBS"
+bucket_name = "kidas-public-job-sources"
+
+[[ratelimits]]
+name = "SUBMISSION_LIMIT"
+namespace_id = "73101"
+
+[ratelimits.simple]
+limit = 3
+period = 60
+
+[[ratelimits]]
+name = "STATUS_LIMIT"
+namespace_id = "73102"
+
+[ratelimits.simple]
+limit = 80
+period = 60
+
+[triggers]
+crons = ["0 */6 * * *"]
