@@ -360,6 +360,7 @@ def detect_profile(text):
       kidas   : React + audio intégré (KIDAS Vidéo v2, KIDAS motion design 9:16)
       editpro : canvas + fonction render(t) + voix intégrée (EditPro – Vidéo 60 s)
       voicevideo : React + <audio> intégré + window.__video.seek(t)
+      musicpro : canvas + render(t) + voix base64 et musique Web Audio (MusicPro – Vidéo)
       generic : autre page HTML (rendu universel en temps réel, synchro non garantie)
       invalid : ce n'est pas une page HTML exploitable
     """
@@ -381,6 +382,20 @@ def detect_profile(text):
     )
     if editpro:
         return "editpro", "EditPro (canvas + voix intégrée)"
+    # MusicPro : canvas + render(t) piloté par ac.currentTime, voix base64 décodée par Web Audio
+    # et musique synthétisée hors-ligne (OfflineAudioContext).
+    musicpro = (
+        "function render(t)" in text
+        and bool(re.search(r"atob\(\s*VOICE\s*\)", text))
+        and bool(re.search(r"function\s+music\s*\(", text))
+        and bool(re.search(r"function\s+go\s*\(", text))
+        and bool(re.search(r"\(function\s+lp\s*\(\)\s*\{", text))
+        and bool(re.search(r"\bconst\s+D\s*=\s*\d", text))
+        and bool(re.search(r"\bvP\s*=", text))
+        and bool(re.search(r"\bmP\s*=", text))
+    )
+    if musicpro:
+        return "musicpro", "MusicPro (canvas + voix et musique Web Audio)"
     # Pages « vidéo React » : piste <audio> intégrée + API window.__video (seek/duration)
     # qui pilotent l'animation depuis l'horloge de l'audio.
     voicevideo = (
@@ -414,6 +429,15 @@ def patch_html(text):
         text = text.replace("const loop = () => { if (!au.paused)", "const loop = () => { if (!window.__manual && !au.paused)", 1)
         text = text.replace("function go() { if (!au.paused) return;", "function go() { if (window.__manual || !au.paused) return;", 1)
         return text, "voicevideo"
+    if profile == "musicpro":
+        # Le mode manuel est activé avant tout script : la page ne lance ni son horloge audio
+        # (go) ni sa boucle temps réel (lp), et render(t) est appelé image par image.
+        text = re.sub(r"function\s+go\s*\(\)\s*\{", lambda m: m.group(0) + "if(window.__manual)return;", text, count=1)
+        text = re.sub(r"\(function\s+lp\s*\(\)\s*\{", lambda m: m.group(0) + "if(window.__manual)return;", text, count=1)
+        manual = "<script>window.__manual=true</script>"
+        m = re.search(r"<head\b[^>]*>", text, flags=re.I)
+        text = text[:m.end()] + manual + text[m.end():] if m else manual + text
+        return text, "musicpro"
     return text, ""
 
 
@@ -428,6 +452,8 @@ MIME_EXT = {"mpeg": "mp3", "mp3": "mp3", "wav": "wav", "x-wav": "wav", "ogg": "o
 def extract_audio(text, tmp, profile="kidas"):
     """Retourne {'voice': Path|None, 'music': Path|None, 'music_volume': float}."""
     out = {"voice": None, "music": None, "music_volume": 0.2}
+    if profile == "musicpro":
+        return out  # pistes décodées par le navigateur : voir window.__wavOf
     if profile == "editpro":
         m = re.search(r'"voice"\s*:\s*"([A-Za-z0-9+/=]+)"', text)
         if m:
@@ -457,7 +483,7 @@ def extract_audio(text, tmp, profile="kidas"):
 
 
 def detect_stage_size(text):
-    m = re.search(r"[.#]stage\{[^}]*?width:(\d+)px;height:(\d+)px", text)
+    m = re.search(r"[.#](?:stage|st)\s*\{[^}]*?width:\s*(\d+)px;\s*height:\s*(\d+)px", text)
     if m:
         return int(m.group(1)), int(m.group(2))
     m = re.search(r"\bW\s*=\s*(\d{3,4})\s*,\s*H\s*=\s*(\d{3,4})\b", text)  # const W = 1080, H = 1920
@@ -491,6 +517,13 @@ window.__seek = async (t) => {
       run = true; vi = 0; subEnd = 0;
       const ui = document.querySelector('#ui'); if (ui) ui.style.display = 'none';
     }
+    render(Math.max(0, t));
+    await window.__finish();
+    return 1;
+  }
+  if (window.__profile === 'musicpro') {
+    window.__manual = true;
+    try { run = 0; } catch (e) {}
     render(Math.max(0, t));
     await window.__finish();
     return 1;
@@ -541,16 +574,37 @@ window.__sfx = async () => {
   for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
   return btoa(bin);
 };
+
+window.__wavOf = async (key) => {
+  let buf = null;
+  try { buf = await (key === 'voice' ? vP : mP); } catch (e) {}
+  if (!buf || !buf.getChannelData) return '';
+  const ch = Math.min(2, buf.numberOfChannels), n = buf.length, pcm = new Int16Array(n * ch);
+  for (let c = 0; c < ch; c++) {
+    const x = buf.getChannelData(c);
+    for (let i = 0; i < n; i++) { const v = Math.max(-1, Math.min(1, x[i])); pcm[i * ch + c] = v < 0 ? v * 32768 : v * 32767; }
+  }
+  const u8 = new Uint8Array(pcm.buffer);
+  let bin = '';
+  for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return buf.sampleRate + ':' + ch + ':' + btoa(bin);
+};
 0;
 """
 
 
-def write_wav(path, pcm_bytes, sr=44100):
+def write_wav(path, pcm_bytes, sr=44100, channels=1):
     with wave.open(str(path), "wb") as w:
-        w.setnchannels(1)
+        w.setnchannels(channels)
         w.setsampwidth(2)
         w.setframerate(sr)
         w.writeframes(pcm_bytes)
+
+
+def write_wav_payload(path, payload):
+    """payload : « fréquence:canaux:PCM16 en base64 », produit par window.__wavOf."""
+    sr, ch, b64 = payload.split(":", 2)
+    write_wav(path, base64.b64decode(b64), int(sr), int(ch))
 
 
 # ----------------------------------------------------------------------------
@@ -625,6 +679,23 @@ def verify_sync(path, fps, dur):
         warn(f"Durée finale {v:.2f}s au lieu de {dur:.2f}s attendues.")
 
 
+def check_audio_level(path, expected):
+    """Avertit si la piste audio du MP4 final est absente ou quasi silencieuse."""
+    if not expected or not shutil.which("ffmpeg"):
+        return
+    r = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(path), "-vn",
+                        "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True)
+    m = re.search(r"max_volume:\s*(-?inf|-?[\d.]+)\s*dB", r.stderr)
+    if not m:
+        warn("Aucune piste audio exploitable dans la vidéo finale.")
+        return
+    peak = float("-inf") if "inf" in m.group(1) else float(m.group(1))
+    if peak < -50:
+        warn(f"Piste audio quasi silencieuse (pic {m.group(1)} dB) : le son n'a probablement pas été capturé.")
+    else:
+        good(f"Niveau audio vérifié : pic {peak:.1f} dB.")
+
+
 def unique_path(p):
     if not p.exists():
         return p
@@ -672,7 +743,7 @@ GENERIC_AUDIO_CAPTURE = r"""<script>
       ctx.__h2mChunks = [];
       ctx.__h2mRec = null;
       contexts.push(ctx);
-      if (active) start(ctx);
+      start(ctx);
     } catch (_) {}
   }
   if (Native) {
@@ -696,6 +767,7 @@ GENERIC_AUDIO_CAPTURE = r"""<script>
       rec.ondataavailable = e => { if (e.data && e.data.size) ctx.__h2mChunks.push(e.data); };
       rec.start(250);
       ctx.__h2mRecStartPerf = performance.now();
+      ctx.__h2mRecCt = ctx.currentTime;
     } catch (_) {}
   }
   window.__h2mStart = async () => {
@@ -723,6 +795,12 @@ GENERIC_AUDIO_CAPTURE = r"""<script>
     }
     return contexts.length;
   };
+  // L'horloge de l'AudioContext n'avance que lorsqu'il tourne, comme le flux enregistré :
+  // elle donne un décalage fiable même si le contexte a démarré suspendu.
+  window.__h2mMark = () => {
+    window.__h2mVideoStartPerf = performance.now();
+    for (const ctx of contexts) { try { ctx.__h2mMarkCt = ctx.currentTime; } catch (_) {} }
+  };
   window.__h2mStop = async () => {
     const records = contexts.filter(c => c.__h2mRec);
     await Promise.all(records.map(c => new Promise(resolve => {
@@ -745,7 +823,8 @@ GENERIC_AUDIO_CAPTURE = r"""<script>
         if (data) result.push({
           mime: blob.type || 'audio/webm',
           data,
-          offset: window.__h2mVideoStartPerf == null ? 0 :
+          offset: (ctx.__h2mMarkCt != null && ctx.__h2mRecCt != null) ? ctx.__h2mMarkCt - ctx.__h2mRecCt :
+            window.__h2mVideoStartPerf == null ? 0 :
             (window.__h2mVideoStartPerf - (ctx.__h2mRecStartPerf || window.__h2mVideoStartPerf)) / 1000
         });
       } catch (_) {}
@@ -797,7 +876,7 @@ def render(html_path, args):
             die(label)
         info(f"Fichier vérifié : {label}")
         text, profile = patch_html(text)
-        precise_candidate = profile in ("kidas", "editpro", "voicevideo")
+        precise_candidate = profile in ("kidas", "editpro", "voicevideo", "musicpro")
         W, H = choose_frame_size(text, "auto" if precise_candidate else args.format)
         page = tmp / "page.html"
         text = inject_base_url(text, html_path.parent.resolve().as_uri().rstrip("/") + "/")
@@ -842,6 +921,8 @@ def render(html_path, args):
                 check = "(()=>!!document.querySelector('.stage')&&document.querySelectorAll('audio').length>=1&&typeof D==='number'&&typeof window.__setT==='function')()"
             elif profile == "voicevideo":
                 check = "(()=>!!document.querySelector('#stage')&&!!window.__video&&typeof window.__video.seek==='function'&&document.querySelectorAll('audio').length>=1)()"
+            elif profile == "musicpro":
+                check = "(()=>!!document.querySelector('#st')&&typeof render==='function'&&typeof D==='number'&&typeof vP!=='undefined'&&typeof mP!=='undefined')()"
             else:
                 check = "(()=>!!document.querySelector('#stage')&&typeof render==='function'&&typeof IM==='object')()"
             t1 = time.time()
@@ -860,7 +941,7 @@ def render(html_path, args):
             cdp.ev(f"window.__profile = {json.dumps(profile)}; 0", await_promise=False)
             cdp.ev(JS_HELPERS, await_promise=False)
             cdp.ev("window.__prep()")
-            if profile == "kidas":
+            if profile in ("kidas", "musicpro"):
                 total = float(cdp.ev("D"))
             elif profile == "voicevideo":
                 total = float(cdp.ev("window.__video.duration"))
@@ -888,11 +969,27 @@ def render(html_path, args):
                         audio_inputs.append((sfx, 1.0))
                 except Exception as e:  # noqa: BLE001
                     warn(f"Effets sonores ignorés : {e}")
+            if profile == "musicpro":
+                # Voix et musique sont lues telles que le navigateur les a décodées/synthétisées :
+                # aucun format audio à deviner, et la musique inclut déjà son ducking.
+                for key, label_fr in (("voice", "voix"), ("music", "musique")):
+                    try:
+                        payload = cdp.ev(f"window.__wavOf('{key}')")
+                    except Exception as e:  # noqa: BLE001
+                        warn(f"Piste {label_fr} ignorée : {e}")
+                        continue
+                    if payload:
+                        p = tmp / f"{key}.wav"
+                        write_wav_payload(p, payload)
+                        audio_inputs.append((p, 1.0))
+                        info(f"Piste {label_fr} récupérée depuis le navigateur.")
+                    else:
+                        warn(f"Piste {label_fr} introuvable ou non décodée par le navigateur.")
             if not audio_inputs:
                 warn("Aucune piste audio trouvée dans ce fichier : la vidéo sera muette.")
 
             cdp.ev("window.__seek(0)")
-            r = cdp.ev("(()=>{const r=document.querySelector('.stage,#stage').getBoundingClientRect();return [r.x,r.y,r.width,r.height]})()")
+            r = cdp.ev("(()=>{const r=document.querySelector('.stage,#stage,#st').getBoundingClientRect();return [r.x,r.y,r.width,r.height]})()")
             if abs(r[2] - W) > 2 or abs(r[3] - H) > 2:
                 warn(f"La scène mesure {r[2]:.0f}×{r[3]:.0f} au lieu de {W}×{H} : rendu possiblement flou.")
             clip = {"x": round(r[0]), "y": round(r[1]), "width": W, "height": H, "scale": args.scale}
@@ -906,6 +1003,19 @@ def render(html_path, args):
                     media_dur = cdp.ev("(()=>Math.max(0,...[...document.querySelectorAll('audio,video')].map(x=>x.duration).filter(x=>Number.isFinite(x)&&x>0)))()", await_promise=False)
                 except RuntimeError:
                     media_dur = 0
+                if not media_dur:
+                    # Pas de <audio>/<video> : on cherche une durée déclarée par la page (const D = 48.59…).
+                    try:
+                        media_dur = cdp.ev(
+                            "(()=>{for(const n of ['D','DUR','DURATION','TOTAL','TOTAL_DURATION','VIDEO_DURATION']){"
+                            "try{const v=(0,eval)(n);if(typeof v==='number'&&isFinite(v)&&v>=2&&v<=900)return v}catch(e){}}return 0})()",
+                            await_promise=False)
+                    except RuntimeError:
+                        media_dur = 0
+                    if media_dur:
+                        info(f"Durée déclarée par la page : {float(media_dur):.2f} s.")
+                    else:
+                        warn("Durée de la page non détectée : 60 s par défaut. Utilise --duration N pour la fixer.")
                 dur = float(media_dur or 60.0)
             if args.test > 0:
                 dur = min(dur, args.test)
@@ -978,7 +1088,7 @@ def render(html_path, args):
         if not is_precise:
             # Référence de temps commune navigateur/FFmpeg pour aligner l'audio WebAudio.
             try:
-                cdp.ev("window.__h2mVideoStartPerf = performance.now(); true", await_promise=False)
+                cdp.ev("(window.__h2mMark ? window.__h2mMark() : (window.__h2mVideoStartPerf = performance.now())); true", await_promise=False)
             except Exception:  # noqa: BLE001
                 pass
         info(f"Rendu en cours ({mode})…")
@@ -1034,6 +1144,9 @@ def render(html_path, args):
                         audio_inputs.append((p, 1.0, float(item.get("offset", 0.0))))
                 if audio_inputs:
                     warn("Les pistes audio génériques sont incluses ; vérifie la synchronisation et les sons spécifiques de la page.")
+                else:
+                    warn("Aucun son capturé : la page ne produit peut-être pas d'audio Web Audio/<audio>, ou elle attend un geste "
+                         "de l'utilisateur. La vidéo sera muette.")
             except Exception as e:  # noqa: BLE001
                 warn(f"Impossible de récupérer la piste audio du navigateur : {e}")
             if slow_frames:
@@ -1073,6 +1186,7 @@ def render(html_path, args):
 
         shutil.move(str(out_tmp), str(out_final))
         verify_sync(out_final, fps, n_frames / fps)
+        check_audio_level(out_final, bool(audio_inputs))
         good(f"Terminé en {fmt_time(time.monotonic() - start)} → {out_final}")
         return out_final
     finally:
