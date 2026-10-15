@@ -478,7 +478,7 @@ async function go() {
     step = 1; setSteps(1); status('Lancement du rendu…');
     await sleep(2500);
     await gh('/actions/workflows/render.yml/dispatches', { method: 'POST',
-      body: JSON.stringify({ ref: BRANCH, inputs: { fichier: `uploads/${id}.html`, fps: $('#fps').value, scale: m.scale, test: m.test, duration: $('#duration').value, format: $('#format').value, tag: id } }) });
+      body: JSON.stringify({ ref: BRANCH, inputs: { fichier: `uploads/${id}.html`, fps: $('#fps').value, scale: m.scale, test: m.test, duration: $('#duration').value, format: $('#format').value, nom: f.name.replace(/\.html?$/i, ''), tag: id } }) });
     store.set('kidas_job', JSON.stringify({ id, t0 }));
     step = 2;
     await finish(await waitRelease(id, t0));
