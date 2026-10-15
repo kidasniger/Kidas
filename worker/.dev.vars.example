@@ -1,0 +1,5 @@
+# Copy to .dev.vars for local development. Never commit real values.
+GITHUB_TOKEN=replace-with-a-fine-grained-github-token
+KIDAS_JOB_SECRET=replace-with-a-long-random-secret
+TURNSTILE_SECRET=replace-with-a-cloudflare-turnstile-secret
+ALLOWED_ORIGINS=http://localhost:8788
