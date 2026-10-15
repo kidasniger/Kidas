@@ -3,120 +3,187 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>HTML → MP4 · Kidas</title>
+<meta name="description" content="Transforme une animation HTML en vidéo MP4 avec le son, rendue image par image par GitHub Actions.">
+<meta name="theme-color" content="#0c0c10" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f4f0" media="(prefers-color-scheme: light)">
+<title>HTML → MP4 · Kidas Studio</title>
 <style>
-:root{--bg:#f4f6ff;--card:#fff;--tx:#0a1640;--mut:#5a6699;--ac:#2b59ff;--on:#fff;--ok:#12805c;--err:#c0392b;--warn:#a05a00;--bd:#d9def5;--soft:#eef1ff;color-scheme:light}
-@media(prefers-color-scheme:dark){:root{--bg:#070f2e;--card:#0f1b4d;--tx:#f4f6ff;--mut:#9aa7d6;--ac:#6c8cff;--on:#070f2e;--ok:#4cd6a1;--err:#ff8a7a;--warn:#ffc46b;--bd:#26357f;--soft:#14226a;color-scheme:dark}}
+:root{
+  --bg:#f5f4f0;--surf:#ffffff;--surf2:#efede7;--tx:#16161a;--mut:#6b6a72;--bd:#e2e0d8;
+  --ac:#e5401f;--ac2:#ff6a47;--on:#ffffff;--ok:#0f8a5f;--err:#c8302a;--warn:#a35c00;
+  --r:18px;--rs:12px;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;color-scheme:light
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#0c0c10;--surf:#16161c;--surf2:#1e1e26;--tx:#f3f2f5;--mut:#9b9aa6;--bd:#2a2a34;
+  --ac:#ff5a36;--ac2:#ff8466;--on:#140806;--ok:#3ddc97;--err:#ff6b66;--warn:#ffb547;color-scheme:dark
+}}
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:600px;margin:0 auto;padding:max(20px,env(safe-area-inset-top)) 16px max(60px,env(safe-area-inset-bottom))}
-h1{font-size:1.45rem;margin:8px 0 2px}
-h2{font-size:1rem;margin:0 0 8px}
-.sub{color:var(--mut);margin:0 0 18px;font-size:.93rem}
-.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:14px}
-label{display:block;font-weight:600;margin:12px 0 6px;font-size:.92rem}
-select,input[type=password],input[type=text]{width:100%;min-height:44px;padding:10px;border:1px solid var(--bd);border-radius:10px;background:transparent;color:var(--tx);font:inherit}
-button{font:inherit;font-weight:700;border:0;border-radius:999px;min-height:46px;padding:12px 20px;background:var(--ac);color:var(--on);width:100%;margin-top:14px;cursor:pointer}
-button.sec{background:transparent;color:var(--ac);border:1px solid var(--bd);width:auto;margin:0;padding:8px 16px;min-height:44px}
-button.danger{background:transparent;color:var(--err);border:1px solid var(--err)}
-button:disabled{opacity:.5;cursor:not-allowed}
+html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+main{max-width:620px;margin:0 auto;padding:max(18px,env(safe-area-inset-top)) 14px max(48px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
 a{color:var(--ac)}
 small,.mut{color:var(--mut)}
-:focus-visible{outline:3px solid var(--ac);outline-offset:2px}
+small{font-size:.82rem;line-height:1.45}
+:focus-visible{outline:2px solid var(--ac);outline-offset:3px}
 [hidden]{display:none!important}
+svg{flex:none}
+
+/* en-tête */
+header.top{display:flex;flex-direction:column;gap:6px;padding:6px 2px 10px}
+.brand{display:flex;align-items:center;gap:8px;font:600 .72rem/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+.rec{width:8px;height:8px;border-radius:50%;background:var(--ac);box-shadow:0 0 0 4px color-mix(in srgb,var(--ac) 22%,transparent);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+@media(prefers-reduced-motion:reduce){.rec{animation:none}}
+h1{font-size:2rem;line-height:1.05;letter-spacing:-.03em;margin:4px 0 0;font-weight:800}
+h1 span{color:var(--ac)}
+.sub{color:var(--mut);margin:0;font-size:.95rem;text-wrap:pretty}
+
+/* cartes */
+.card{background:var(--surf);border:1px solid var(--bd);border-radius:var(--r);padding:16px}
+.head{display:flex;align-items:center;gap:10px;margin:0 0 12px}
+.num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:26px;border-radius:8px;background:var(--surf2);border:1px solid var(--bd);font:700 .74rem/1 var(--mono);color:var(--mut)}
+h2{font-size:1.02rem;margin:0;font-weight:700;letter-spacing:-.01em}
 .row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
-@media(max-width:420px){.grid{grid-template-columns:1fr}}
+
+/* formulaires */
+label{display:block;font-weight:600;margin:0 0 6px;font-size:.82rem;color:var(--mut)}
+.field{display:flex;flex-direction:column;min-width:0}
+select,input[type=password],input[type=text]{width:100%;min-height:46px;padding:10px 12px;border:1px solid var(--bd);border-radius:var(--rs);background-color:var(--surf2);color:var(--tx);font:inherit;font-size:.95rem}
+select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;text-overflow:ellipsis;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center}
+select:hover,input:hover{border-color:color-mix(in srgb,var(--tx) 25%,var(--bd))}
+input[type=password]{font-family:var(--mono)}
+.grid{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:480px){.grid{grid-template-columns:1fr 1fr}}
+
+/* boutons */
+button{font:inherit;font-weight:700;border:0;border-radius:999px;min-height:48px;padding:12px 20px;background:var(--ac);color:var(--on);width:100%;margin-top:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:transform .12s,background-color .15s,border-color .15s}
+button:hover{background:var(--ac2)}
+button:active{transform:scale(.98)}
+button.sec{background:transparent;color:var(--tx);border:1px solid var(--bd);width:auto;margin:0;padding:8px 16px;min-height:44px;font-weight:600;font-size:.9rem}
+button.sec:hover{background:var(--surf2);border-color:color-mix(in srgb,var(--tx) 25%,var(--bd))}
+button.danger{background:transparent;color:var(--err);border:1px solid color-mix(in srgb,var(--err) 50%,transparent)}
+button.danger:hover{background:color-mix(in srgb,var(--err) 10%,transparent)}
+button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+button.go{min-height:54px;font-size:1.02rem;margin-top:16px}
+button.go .dot{width:10px;height:10px;border-radius:50%;background:currentColor}
+
+/* jeton */
+.tok-ok{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.tok-ok span{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:.92rem}
+.tok-ok svg{color:var(--ok)}
+.tok-help{display:block;margin-top:8px}
 
 /* zone de dépôt */
-.drop{display:block;position:relative;border:2px dashed var(--bd);border-radius:14px;padding:22px 14px;text-align:center;background:var(--soft);cursor:pointer;margin:0}
-.drop.over{border-color:var(--ac);background:transparent}
-.drop b{display:block;font-size:1rem}
+.drop{display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;border:1.5px dashed var(--bd);border-radius:var(--r);padding:28px 16px;text-align:center;background:var(--surf2);cursor:pointer;margin:0;color:var(--tx);font-size:inherit;font-weight:400;transition:border-color .15s,background-color .15s}
+.drop:hover,.drop.over{border-color:var(--ac);background:color-mix(in srgb,var(--ac) 7%,var(--surf2))}
+.drop .ico{display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:14px;background:var(--surf);border:1px solid var(--bd);color:var(--ac);margin-bottom:4px}
+.drop b{font-size:1rem}
+.drop .mut{font-size:.85rem}
 .drop input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
-.drop:focus-within{outline:3px solid var(--ac);outline-offset:2px}
-#fileinfo{margin:10px 0 0;font-weight:600;word-break:break-all}
-#verdict{margin:8px 0 0;font-size:.93rem}
-#verdict.ok{color:var(--ok)}#verdict.err{color:var(--err)}#verdict.warn{color:var(--warn)}
-iframe#prev{width:100%;height:380px;border:1px solid var(--bd);border-radius:12px;margin-top:10px;background:#000}
+.drop:focus-within{outline:2px solid var(--ac);outline-offset:3px}
+#fileinfo{margin:12px 0 0;font:600 .85rem/1.4 var(--mono);word-break:break-all;padding:10px 12px;border-radius:var(--rs);background:var(--surf2);border:1px solid var(--bd)}
+#verdict{margin:10px 0 0;font-size:.88rem;padding:10px 12px;border-radius:var(--rs);border:1px solid var(--bd);text-wrap:pretty}
+#verdict.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 35%,transparent);background:color-mix(in srgb,var(--ok) 8%,transparent)}
+#verdict.err{color:var(--err);border-color:color-mix(in srgb,var(--err) 35%,transparent);background:color-mix(in srgb,var(--err) 8%,transparent)}
+#verdict.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,transparent);background:color-mix(in srgb,var(--warn) 8%,transparent)}
+#prevBtn{margin-top:10px}
+iframe#prev{width:100%;height:420px;border:1px solid var(--bd);border-radius:var(--rs);margin-top:10px;background:#000;display:block}
+.note{display:block;margin-top:14px;padding-top:12px;border-top:1px solid var(--bd)}
 
 /* étapes */
-ol.steps{list-style:none;padding:0;margin:0 0 10px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
-ol.steps li{font-size:.76rem;text-align:center;color:var(--mut);border-top:4px solid var(--bd);padding-top:6px;margin:0}
-ol.steps li[data-s=active]{color:var(--tx);border-color:var(--ac);font-weight:700}
-ol.steps li[data-s=done]{color:var(--ok);border-color:var(--ok)}
-ol.steps li[data-s=err]{color:var(--err);border-color:var(--err);font-weight:700}
-#st{font-weight:600;margin:0}
+ol.steps{list-style:none;padding:0;margin:0 0 14px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+ol.steps li{display:flex;flex-direction:column;gap:8px;font-size:.74rem;font-weight:600;color:var(--mut);margin:0;min-width:0}
+ol.steps li::before{content:"";display:block;height:4px;border-radius:4px;background:var(--bd);transition:background-color .2s}
+ol.steps li[data-s=active]{color:var(--tx)}
+ol.steps li[data-s=active]::before{background:linear-gradient(90deg,var(--ac),var(--ac2),var(--ac));background-size:200% 100%;animation:flow 1.4s linear infinite}
+@keyframes flow{to{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){ol.steps li[data-s=active]::before{animation:none}}
+ol.steps li[data-s=done]{color:var(--ok)}
+ol.steps li[data-s=done]::before{background:var(--ok)}
+ol.steps li[data-s=err]{color:var(--err)}
+ol.steps li[data-s=err]::before{background:var(--err)}
+#st{font-weight:600;margin:0;font-variant-numeric:tabular-nums}
 #st.ok{color:var(--ok)}#st.err{color:var(--err)}
-#hint{margin:6px 0 0;font-size:.9rem}
-video{width:100%;max-height:70vh;border-radius:12px;background:#000;margin-top:10px}
-.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+#hint{margin:6px 0 0;font-size:.86rem}
+#stl{margin:8px 0 0;font-size:.88rem}
+video{width:100%;max-height:70vh;border-radius:var(--rs);background:#000;margin-top:14px;display:block}
+#res small{display:block;margin-top:8px;font-family:var(--mono);font-size:.78rem}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .actions a,.actions button{flex:1 1 130px;text-align:center}
-.actions a.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:8px 16px;border-radius:999px;background:var(--ac);color:var(--on);font-weight:700;text-decoration:none}
-.actions button{margin:0}
+.actions a.btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:8px 16px;border-radius:999px;background:var(--ac);color:var(--on);font-weight:700;text-decoration:none}
+.actions a.btn:hover{background:var(--ac2)}
+.actions button{margin:0;min-height:48px}
 
 /* historique */
-ul#list{list-style:none;padding:0;margin:8px 0 0}
-ul#list li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--bd)}
+ul#list{list-style:none;padding:0;margin:4px 0 0}
+ul#list li{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 0;border-top:1px solid var(--bd)}
 ul#list li:first-child{border-top:0}
-ul#list .meta{min-width:0}
-ul#list .meta a{font-weight:700;word-break:break-all}
-ul#list .meta small{display:block}
-ul#list button{width:auto;margin:0;min-height:44px;padding:8px 14px}
-.empty{text-align:center;color:var(--mut);padding:14px 0}
+ul#list .meta{min-width:0;flex:1}
+ul#list .meta a{font:600 .88rem/1.35 var(--mono);word-break:break-all;color:var(--tx);text-decoration:none}
+ul#list .meta a:hover{color:var(--ac);text-decoration:underline}
+ul#list .meta small{display:block;margin-top:2px;font-size:.78rem}
+ul#list button{width:auto;margin:0;min-height:40px;padding:6px 14px;font-size:.84rem}
+ul#list li.empty{display:block;text-align:center;color:var(--mut);padding:22px 0;font-size:.9rem}
 progress{width:100%;height:8px;accent-color:var(--ac)}
+footer{text-align:center;color:var(--mut);font:500 .7rem/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;padding-top:8px}
 </style>
 </head>
 <body>
 <main>
-  <h1>HTML → MP4</h1>
-  <p class="sub">Importe ton animation HTML : la vidéo (image + son) est générée par GitHub.</p>
+  <header class="top">
+    <div class="brand"><span class="rec" aria-hidden="true"></span>Kidas Studio</div>
+    <h1 aria-label="HTML vers MP4">HTML <span aria-hidden="true">→</span> MP4</h1>
+    <p class="sub">Importe ton animation HTML : la vidéo, image et son, est générée par GitHub.</p>
+  </header>
 
   <section class="card" aria-label="Jeton GitHub">
     <div id="tokEdit">
-      <label for="tok" style="margin-top:0">Jeton GitHub (une seule fois)</label>
-      <input id="tok" type="password" autocomplete="off" placeholder="github_pat_…">
-      <small>Il reste dans ce navigateur et n’est envoyé qu’à api.github.com. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Créer un jeton</a> limité au dépôt Kidas, avec <b>Contents</b> et <b>Actions</b> en lecture/écriture.</small>
+      <label for="tok">Jeton GitHub (une seule fois)</label>
+      <input id="tok" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
+      <small class="tok-help">Il reste dans ce navigateur et n’est envoyé qu’à api.github.com. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Créer un jeton</a> limité au dépôt Kidas, avec <b>Contents</b> et <b>Actions</b> en lecture/écriture.</small>
       <button id="tokSave" type="button">Enregistrer le jeton</button>
     </div>
-    <div id="tokOk" class="row" hidden>
-      <span>Jeton enregistré ✓</span>
+    <div id="tokOk" class="tok-ok" hidden>
+      <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Jeton GitHub enregistré</span>
       <button class="sec" id="tokDel" type="button">Changer</button>
     </div>
   </section>
 
-  <section class="card" aria-label="Fichier">
-    <h2>1. Ton fichier HTML</h2>
+  <section class="card" aria-labelledby="h-file">
+    <div class="head"><span class="num" aria-hidden="true">01</span><h2 id="h-file">Ton fichier HTML</h2></div>
     <label class="drop" id="drop">
+      <span class="ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg></span>
       <b>Dépose ton fichier ici</b>
-      <span class="mut">ou touche pour le choisir (.html, .htm · 50 Mo max)</span>
+      <span class="mut">ou touche pour le choisir · .html, .htm · 50 Mo max</span>
       <input id="file" type="file" accept=".html,.htm,text/html" aria-label="Choisir un fichier HTML">
     </label>
     <p id="fileinfo" hidden></p>
     <p id="verdict" role="status" hidden></p>
-    <button class="sec" id="prevBtn" type="button" style="margin-top:10px" hidden>Voir un aperçu</button>
+    <button class="sec" id="prevBtn" type="button" hidden>Voir un aperçu</button>
     <iframe id="prev" title="Aperçu du fichier HTML" sandbox="allow-scripts" hidden></iframe>
   </section>
 
-  <section class="card" aria-label="Réglages">
-    <h2>2. Réglages</h2>
+  <section class="card" aria-labelledby="h-set">
+    <div class="head"><span class="num" aria-hidden="true">02</span><h2 id="h-set">Réglages</h2></div>
     <div class="grid">
-      <div>
-        <label for="mode" style="margin-top:0">Qualité</label>
+      <div class="field">
+        <label for="mode">Qualité</label>
         <select id="mode">
           <option value="full">Complète · 1080×1920</option>
           <option value="half">Allégée · 540×960</option>
           <option value="test">Aperçu · 10 s · 540×960</option>
         </select>
       </div>
-      <div>
-        <label for="fps" style="margin-top:0">Images / seconde</label>
+      <div class="field">
+        <label for="fps">Images / seconde</label>
         <select id="fps">
           <option value="30">30 (fluide)</option>
           <option value="24">24 (cinéma)</option>
           <option value="15">15 (plus rapide)</option>
         </select>
       </div>
-      <div>
+      <div class="field">
         <label for="format">Format</label>
         <select id="format">
           <option value="auto">Automatique</option>
@@ -125,7 +192,7 @@ progress{width:100%;height:8px;accent-color:var(--ac)}
           <option value="square">Carré · 1:1</option>
         </select>
       </div>
-      <div>
+      <div class="field">
         <label for="duration">Durée maximale</label>
         <select id="duration">
           <option value="0">Automatique</option>
@@ -137,12 +204,13 @@ progress{width:100%;height:8px;accent-color:var(--ac)}
         </select>
       </div>
     </div>
-    <small>Les fichiers reconnus (KIDAS, EditPro, Vidéo React) sont rendus image par image avec leur son : synchronisation garantie, la durée vient du fichier. Format et durée ne servent que pour les autres pages (mode universel, synchro non garantie).</small>
-    <button id="go" type="button">3. Générer la vidéo</button>
+    <small class="note">Les fichiers reconnus (KIDAS, EditPro, Vidéo React) sont rendus image par image avec leur son : synchronisation garantie, la durée vient du fichier. Format et durée ne servent que pour les autres pages (mode universel, synchro non garantie).</small>
+    <button id="go" class="go" type="button"><span class="dot" aria-hidden="true"></span>Générer la vidéo</button>
     <button id="cancel" class="danger" type="button" hidden>Annuler le rendu</button>
   </section>
 
-  <section class="card" aria-label="Progression" id="progCard" hidden>
+  <section class="card" aria-labelledby="h-prog" id="progCard" hidden>
+    <div class="head"><span class="num" aria-hidden="true">03</span><h2 id="h-prog">Rendu</h2></div>
     <ol class="steps" id="steps">
       <li data-s="pending">Envoi</li>
       <li data-s="pending">Lancement</li>
@@ -155,10 +223,12 @@ progress{width:100%;height:8px;accent-color:var(--ac)}
     <div id="res"></div>
   </section>
 
-  <section class="card" aria-label="Historique">
-    <div class="row"><h2 style="margin:0">Vidéos générées</h2><button class="sec" id="refresh" type="button">Actualiser</button></div>
+  <section class="card" aria-labelledby="h-hist">
+    <div class="row"><h2 id="h-hist">Vidéos générées</h2><button class="sec" id="refresh" type="button">Actualiser</button></div>
     <ul id="list"><li class="empty">Chargement…</li></ul>
   </section>
+
+  <footer>Rendu par GitHub Actions</footer>
 </main>
 
 <script>
