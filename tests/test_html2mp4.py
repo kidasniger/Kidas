@@ -91,6 +91,26 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertEqual(renderer.editpro_duration(self.EDITPRO), 60.0)
         self.assertEqual(renderer.editpro_duration("if(t>=45){t=45;run=false}"), 45.0)
 
+    MUSICPRO = ("<html><head></head><body><canvas id='st'></canvas><script>const D=48.59;let vP=0,mP=0;"
+                "function render(t){} function music(){} function go(){ac.resume()} "
+                "(function lp(){render(0);requestAnimationFrame(lp)})();"
+                "const b=atob(VOICE);</script></body></html>")
+
+    def test_musicpro_pattern_is_recognised(self):
+        self.assertEqual(renderer.detect_profile(self.MUSICPRO)[0], "musicpro")
+
+    def test_musicpro_patch_enables_manual_mode_before_page_scripts(self):
+        patched, profile = renderer.patch_html(self.MUSICPRO)
+        self.assertEqual(profile, "musicpro")
+        self.assertLess(patched.index("window.__manual=true"), patched.index("const D=48.59"))
+        self.assertIn("function go(){if(window.__manual)return;", patched)
+        self.assertIn("(function lp(){if(window.__manual)return;", patched)
+
+    def test_generic_capture_records_from_context_creation(self):
+        result = renderer.inject_generic_audio_capture("<html><head></head><body></body></html>")
+        self.assertIn("window.__h2mMark", result)
+        self.assertNotIn("if (active) start(ctx)", result)
+
     def test_music_volume_is_read_from_page(self):
         with tempfile.TemporaryDirectory() as d:
             text = "AUD='data:audio/mpeg;base64,QUJD',MUS='data:audio/mpeg;base64,QUJD';mu.current.volume=.22"
