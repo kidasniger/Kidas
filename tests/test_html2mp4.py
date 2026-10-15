@@ -1,3 +1,4 @@
+import argparse
 import base64
 import importlib.util
 import tempfile
@@ -115,6 +116,33 @@ class Html2Mp4Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             text = "AUD='data:audio/mpeg;base64,QUJD',MUS='data:audio/mpeg;base64,QUJD';mu.current.volume=.22"
             self.assertAlmostEqual(renderer.extract_audio(text, Path(d), "kidas")["music_volume"], 0.22)
+
+    def test_output_path_uses_html_name(self):
+        args = argparse.Namespace(name="", test=0, preview=False)
+        self.assertEqual(renderer.output_path(Path("/x/ma video.html"), args), Path("/x/ma video.mp4"))
+
+    def test_output_path_custom_name_is_sanitised(self):
+        args = argparse.Namespace(name="a/b:c", test=0, preview=False)
+        self.assertEqual(renderer.output_path(Path("/x/v.html"), args).parent, Path("/x"))
+        self.assertNotIn("/", renderer.output_path(Path("/x/v.html"), args).name)
+
+    def test_output_path_suffixes_for_test_and_preview(self):
+        self.assertTrue(renderer.output_path(Path("/x/v.html"), argparse.Namespace(name="", test=5, preview=False)).name.endswith("_test.mp4"))
+        self.assertTrue(renderer.output_path(Path("/x/v.html"), argparse.Namespace(name="", test=0, preview=True)).name.endswith("_apercu.mp4"))
+
+    def test_quality_presets_cover_all_levels(self):
+        for level in ("fast", "standard", "high"):
+            self.assertIn("jpeg", renderer.QUALITY[level])
+
+    def test_precise_profiles_come_from_table(self):
+        self.assertIn("kidas", renderer.PRECISE_PROFILES)
+        self.assertNotIn("generic", renderer.PRECISE_PROFILES)
+
+    def test_audio_verdict(self):
+        from h2m.report import audio_verdict
+        self.assertEqual(audio_verdict({"audio_tracks": []})[0], "none")
+        self.assertEqual(audio_verdict({"audio_tracks": ["a"], "peak_db": -80})[0], "warn")
+        self.assertEqual(audio_verdict({"audio_tracks": ["a"], "peak_db": -12})[0], "ok")
 
 
 if __name__ == "__main__":

@@ -31,6 +31,24 @@ on:
           - square
         required: false
         default: "auto"
+      nom:
+        description: "Nom du MP4 (défaut : nom du fichier HTML)"
+        required: false
+        default: ""
+      qualite:
+        description: "Qualité d'encodage"
+        type: choice
+        options:
+          - standard
+          - fast
+          - high
+        required: false
+        default: "standard"
+      loudnorm:
+        description: "Normaliser le volume (-16 LUFS)"
+        type: boolean
+        required: false
+        default: false
       tag:
         description: "Identifiant de la vidéo (rempli par la page web)"
         required: false
@@ -84,7 +102,13 @@ jobs:
           TEST: ${{ inputs.test }}
           DURATION: ${{ inputs.duration }}
           FORMAT: ${{ inputs.format }}
-        run: python html2mp4.py --file "$FICHIER" --fps "$FPS" --scale "$SCALE" --test "$TEST" --duration "$DURATION" --format "$FORMAT"
+          NOM: ${{ inputs.nom }}
+          QUALITE: ${{ inputs.qualite }}
+          LOUDNORM: ${{ inputs.loudnorm }}
+        run: |
+          EXTRA=""
+          [ "$LOUDNORM" = "true" ] && EXTRA="--loudnorm"
+          python html2mp4.py --file "$FICHIER" --fps "$FPS" --scale "$SCALE" --test "$TEST" --duration "$DURATION" --format "$FORMAT" --name "$NOM" --quality "$QUALITE" $EXTRA
 
       - name: Publier le MP4 (artefact)
         uses: actions/upload-artifact@v4
