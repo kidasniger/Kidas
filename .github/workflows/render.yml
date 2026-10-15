@@ -5,21 +5,32 @@ on:
   workflow_dispatch:
     inputs:
       fichier:
-        description: "Fichier HTML à convertir"
-        required: true
+        description: "Fichier HTML à convertir (mode administrateur)"
+        required: false
         default: "kidas.html"
+      job_id:
+        description: "Identifiant du projet soumis par le site public"
+        required: false
+        default: ""
       fps:
         description: "Images par seconde"
+        type: choice
+        options: ["15", "24", "30"]
         default: "30"
       scale:
         description: "Échelle (1 = 1080x1920, 0.5 = 540x960)"
+        type: choice
+        options: ["0.5", "1"]
         default: "1"
       test:
         description: "Secondes à rendre (0 = vidéo entière)"
+        type: choice
+        options: ["0", "10"]
         default: "0"
       duration:
-        description: "Durée maximale en secondes (0 = durée détectée, sinon 60 s en mode universel)"
-        required: false
+        description: "Durée maximale (0 = automatique)"
+        type: choice
+        options: ["0", "10", "30", "60", "120", "300"]
         default: "0"
       format:
         description: "Format de sortie"
@@ -32,24 +43,56 @@ on:
         required: false
         default: "auto"
       tag:
-        description: "Identifiant de la vidéo (rempli par la page web)"
+        description: "Identifiant de la vidéo"
         required: false
         default: ""
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   render:
+    name: Rendu isolé
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - name: Récupérer le HTML importé depuis la branche dédiée
+      - name: Récupérer le HTML privé soumis depuis Kidas
+        if: ${{ inputs.job_id != '' }}
+        env:
+          JOB_ID: ${{ inputs.job_id }}
+          WORKER_URL: ${{ vars.KIDAS_WORKER_URL }}
+          JOB_SECRET: ${{ secrets.KIDAS_JOB_SECRET }}
+        run: |
+          set -euo pipefail
+          case "$JOB_ID" in
+            (*[!a-f0-9-]*|'') echo "Identifiant de tâche invalide." >&2; exit 1 ;;
+          esac
+          [ -n "$WORKER_URL" ] || { echo "Variable KIDAS_WORKER_URL absente." >&2; exit 1; }
+          [ -n "$JOB_SECRET" ] || { echo "Secret KIDAS_JOB_SECRET absent." >&2; exit 1; }
+          case "$WORKER_URL" in
+            https://*) ;;
+            *) echo "KIDAS_WORKER_URL doit utiliser HTTPS." >&2; exit 1 ;;
+          esac
+          mkdir -p /tmp/kidas-public
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --max-time 120 \
+            -H "Authorization: Bearer $JOB_SECRET" \
+            "$WORKER_URL/internal/jobs/$JOB_ID/source" \
+            -o "/tmp/kidas-public/$JOB_ID.html"
+          test -s "/tmp/kidas-public/$JOB_ID.html"
+          unset JOB_SECRET
+
+      - name: Récupérer le HTML importé depuis la branche dédiée (mode administrateur)
+        if: ${{ inputs.job_id == '' }}
         env:
           FICHIER: ${{ inputs.fichier }}
         run: |
+          set -euo pipefail
           case "$FICHIER" in
             uploads/*)
               git fetch --no-tags origin video-uploads
@@ -62,10 +105,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Récupérer le fichier importé
+      - name: Récupérer le fichier depuis la branche d’archives (mode administrateur)
+        if: ${{ inputs.job_id == '' }}
         env:
           FICHIER: ${{ inputs.fichier }}
         run: |
+          set -euo pipefail
           if [ ! -f "$FICHIER" ]; then
             git fetch --depth=1 origin uploads
             git checkout FETCH_HEAD -- "$FICHIER"
@@ -73,32 +118,60 @@ jobs:
 
       - name: Installer FFmpeg et les dépendances
         run: |
-          command -v ffmpeg >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; }
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
           pip install -q websocket-client
 
       - name: Rendre la vidéo
         env:
-          FICHIER: ${{ inputs.fichier }}
+          FICHIER_INPUT: ${{ inputs.fichier }}
+          JOB_ID: ${{ inputs.job_id }}
           FPS: ${{ inputs.fps }}
           SCALE: ${{ inputs.scale }}
           TEST: ${{ inputs.test }}
           DURATION: ${{ inputs.duration }}
           FORMAT: ${{ inputs.format }}
-        run: python html2mp4.py --file "$FICHIER" --fps "$FPS" --scale "$SCALE" --test "$TEST" --duration "$DURATION" --format "$FORMAT"
+        run: |
+          set -euo pipefail
+          if [ -n "$JOB_ID" ]; then
+            FICHIER="/tmp/kidas-public/$JOB_ID.html"
+          else
+            FICHIER="$FICHIER_INPUT"
+          fi
+          python html2mp4.py --file "$FICHIER" --fps "$FPS" --scale "$SCALE" --test "$TEST" --duration "$DURATION" --format "$FORMAT"
 
-      - name: Publier le MP4 (artefact)
+      - name: Publier le MP4 comme artefact de travail
         uses: actions/upload-artifact@v4
         with:
           name: video-mp4
           path: "**/*.mp4"
           if-no-files-found: error
+          retention-days: 1
 
-      - name: Publier le MP4 (Release, pour la page web)
-        if: ${{ inputs.tag != '' }}
+  publish:
+    name: Publication du MP4
+    needs: render
+    if: ${{ inputs.tag != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Télécharger le MP4 produit
+        uses: actions/download-artifact@v4
+        with:
+          name: video-mp4
+          path: ./render-output
+
+      - name: Publier le MP4 dans une Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ inputs.tag }}
         run: |
-          gh release create "$TAG" $(find . -name '*.mp4' -not -path './.git/*') \
-            --title "Vidéo $TAG" --notes "Générée par le workflow Rendu vidéo."
+          set -euo pipefail
+          mapfile -t MP4S < <(find ./render-output -type f -name '*.mp4' -print)
+          [ "${#MP4S[@]}" -gt 0 ] || { echo "Aucun fichier MP4 à publier." >&2; exit 1; }
+          gh release create "$TAG" "${MP4S[@]}" \
+            --title "Vidéo $TAG" \
+            --notes "Vidéo générée par le moteur Kidas."
