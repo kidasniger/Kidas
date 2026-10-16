@@ -15,21 +15,23 @@ export default async function handler(req, res) {
       !['0', '10'].includes(String(test)) || !DURATIONS.has(String(duration)) || !FORMATS.has(String(format))) {
     return send(res, 400, { error: 'Réglages de conversion invalides.' });
   }
+  let stage = 'vérification de sécurité';
   try {
     await verifyTurnstile(req, captchaToken);
+    stage = 'lecture du HTML dans le stockage privé';
     if (!process.env.BLOB_STORE_ID) {
       const error = new Error('Le stockage Blob privé doit être connecté au projet Vercel.');
       error.status = 503;
       throw error;
     }
     const pathname = `incoming/${id}.html`;
-    const blobUrl = `https://${process.env.BLOB_STORE_ID}.private.blob.vercel-storage.com/${pathname}`;
-    const metadata = await head(blobUrl);
+    const metadata = await head(pathname);
     if (Number(metadata.size) > MAX_BYTES) {
       const error = new Error('Fichier trop volumineux (50 Mo maximum).');
       error.status = 413;
       throw error;
     }
+    stage = 'création des liens temporaires de lecture et suppression';
     const validUntil = Date.now() + 110 * 60 * 1000;
     const sourceToken = await issueSignedToken({
       pathname,
@@ -69,12 +71,26 @@ export default async function handler(req, res) {
       loudnorm: false,
       tag: id
     };
+    stage = 'déclenchement du workflow GitHub Actions';
     await githubRequest('/repos/kidasniger/Kidas/actions/workflows/render.yml/dispatches', {
       method: 'POST',
       body: { ref: 'main', inputs }
     });
     return send(res, 202, { id });
   } catch (error) {
+    const status = Number(error?.status) || 500;
+    console.error('[Kidas render]', {
+      stage,
+      name: error?.name || 'Error',
+      status,
+      code: error?.code || null
+    });
+    if (status >= 500) {
+      return send(res, 502, {
+        error: `Échec pendant l’étape : ${stage}. Ouvre les journaux Functions de Vercel si l’erreur persiste.`,
+        stage
+      });
+    }
     const result = publicError(error);
     return send(res, result.status, result.body);
   }
