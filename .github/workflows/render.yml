@@ -87,8 +87,8 @@ jobs:
           set -euo pipefail
           if [ -n "$BLOB_ID" ]; then
             [[ "$BLOB_ID" =~ ^v[a-z0-9]{12,40}$ ]] || { echo "::error::Identifiant temporaire invalide."; exit 1; }
-            [[ "$SOURCE_URL" =~ ^https://[A-Za-z0-9-]+\.private\.blob\.vercel-storage\.com/incoming/${BLOB_ID}\.html\? ]] || { echo "::error::URL signée de lecture invalide."; exit 1; }
-            [[ "$DELETE_URL" =~ ^https://[A-Za-z0-9-]+\.private\.blob\.vercel-storage\.com/incoming/${BLOB_ID}\.html\? ]] || { echo "::error::URL signée de suppression invalide."; exit 1; }
+            [[ "$SOURCE_URL" =~ ^https://[A-Za-z0-9_-]+\.private\.blob\.vercel-storage\.com/incoming/${BLOB_ID}\.html\? ]] || { echo "::error::URL signée de lecture invalide."; exit 1; }
+            [[ "$DELETE_URL" =~ ^https://[A-Za-z0-9_-]+\.private\.blob\.vercel-storage\.com/incoming/${BLOB_ID}\.html\? ]] || { echo "::error::URL signée de suppression invalide."; exit 1; }
             mkdir -p kidas-tmp
             curl --fail --silent --show-error --location --retry 2 \
               "$SOURCE_URL" --output kidas-tmp/input.html
@@ -158,7 +158,7 @@ jobs:
         run: |
           rm -rf kidas-tmp
           if [ -n "$BLOB_ID" ] && [ -n "$DELETE_URL" ]; then
-            if [[ "$DELETE_URL" =~ ^https://[A-Za-z0-9-]+\.private\.blob\.vercel-storage\.com/incoming/${BLOB_ID}\.html\? ]]; then
+            if [[ "$DELETE_URL" =~ ^https://[A-Za-z0-9_-]+\.private\.blob\.vercel-storage\.com/incoming/${BLOB_ID}\.html\? ]]; then
               curl --fail --silent --show-error --location --retry 2 -X DELETE "$DELETE_URL" \
                 || echo "::warning::Le nettoyage du HTML privé a échoué; le lien signé expirera automatiquement."
             else
