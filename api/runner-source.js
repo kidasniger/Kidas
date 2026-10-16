@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return send(res, 405, { error: 'Méthode non autorisée.' });
   const id = String(req.query?.id || '');
   const runId = String(req.query?.run_id || '');
-  if (!validJobId(id) || !/^\\d{1,20}$/.test(runId)) {
+  if (!validJobId(id) || !/^\d{1,20}$/.test(runId)) {
     return send(res, 400, { error: 'Identifiant temporaire invalide.' });
   }
 
