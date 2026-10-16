@@ -134,20 +134,14 @@ footer{text-align:center;color:var(--mut);font:500 .7rem/1 var(--mono);letter-sp
   <header class="top">
     <div class="brand"><span class="rec" aria-hidden="true"></span>Kidas Studio</div>
     <h1 aria-label="HTML vers MP4">HTML <span aria-hidden="true">→</span> MP4</h1>
-    <p class="sub">Importe ton animation HTML : la vidéo, image et son, est générée par GitHub.</p>
+    <p class="sub">Importe ton animation HTML : le MP4 est généré sur un serveur, sans conserver le HTML dans le dépôt.</p>
   </header>
 
-  <section class="card" aria-label="Jeton GitHub">
-    <div id="tokEdit">
-      <label for="tok">Jeton GitHub (une seule fois)</label>
-      <input id="tok" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
-      <small class="tok-help">Il reste dans ce navigateur et n’est envoyé qu’à api.github.com. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Créer un jeton</a> limité au dépôt Kidas, avec <b>Contents</b> et <b>Actions</b> en lecture/écriture.</small>
-      <button id="tokSave" type="button">Enregistrer le jeton</button>
-    </div>
-    <div id="tokOk" class="tok-ok" hidden>
-      <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Jeton GitHub enregistré</span>
-      <button class="sec" id="tokDel" type="button">Changer</button>
-    </div>
+  <section class="card" aria-label="Protection et stockage">
+    <div class="head"><span class="num" aria-hidden="true">●</span><h2>Stockage temporaire privé</h2></div>
+    <p class="mut">Aucun jeton GitHub à coller. Le HTML est envoyé dans un stockage privé temporaire, puis supprimé après le rendu.</p>
+    <p id="securityStatus" role="status" class="mut" aria-live="polite">Vérification de la configuration…</p>
+    <div id="captchaMount" aria-hidden="true"></div>
   </section>
 
   <section class="card" aria-labelledby="h-file">
@@ -228,20 +222,19 @@ footer{text-align:center;color:var(--mut);font:500 .7rem/1 var(--mono);letter-sp
     <ul id="list"><li class="empty">Chargement…</li></ul>
   </section>
 
-  <footer>Rendu par GitHub Actions</footer>
+  <footer>Rendu serveur · HTML temporaire privé</footer>
 </main>
 
 <script>
-const OWNER = 'kidasniger', REPO = 'Kidas', BRANCH = 'main', UPLOAD_BRANCH = 'video-uploads';
-const API = `https://api.github.com/repos/${OWNER}/${REPO}`;
+const API = '/api';
 const MODES = {
-  full: { scale: '1',   test: '0'  },
-  half: { scale: '0.5', test: '0'  },
+  full: { scale: '1', test: '0' },
+  half: { scale: '0.5', test: '0' },
   test: { scale: '0.5', test: '10' }
 };
 const MAX_BYTES = 50e6;
 const $ = s => document.querySelector(s);
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const mmss = ms => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 const size = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' Mo' : Math.max(1, Math.round(n / 1024)) + ' Ko';
 const store = {
@@ -249,44 +242,100 @@ const store = {
   set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
 };
 
-let token = store.get('gh_token') || '';
-let busy = false, cancelled = false, currentRunId = null, fileText = '', verdict = null;
+let busy = false, cancelled = false, currentRunId = null, currentUploadXhr = null, fileText = '', verdict = null;
+let securityReady = false, securityMessage = '', captchaWidgetId = null, captchaResolve = null, captchaReject = null;
 
-/* ---------- jeton ---------- */
-function renderToken() { $('#tokEdit').hidden = !!token; $('#tokOk').hidden = !token; }
-function saveToken(v) { token = v.trim(); store.set('gh_token', token || null); renderToken(); loadList(); }
-
-/* ---------- API GitHub ---------- */
-async function gh(path, opts = {}) {
-  const headers = { 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
-  if (token) headers.Authorization = 'Bearer ' + token;
-  if (opts.body) headers['Content-Type'] = 'application/json';
-  let r;
-  try { r = await fetch(API + path, { ...opts, headers }); }
-  catch (e) { const err = new Error('Pas de connexion à GitHub. Vérifie ton réseau puis réessaie.'); err.status = 0; throw err; }
-  if (r.status === 204) return null;
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) { const e = new Error(j.message || ('Erreur ' + r.status)); e.status = r.status; throw e; }
-  return j;
+async function api(path, opts = {}) {
+  let response;
+  try {
+    response = await fetch(API + path, {
+      method: opts.method || 'GET',
+      headers: opts.body ? { 'Content-Type': 'application/json' } : {},
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      cache: 'no-store'
+    });
+  } catch (e) {
+    const error = new Error('Connexion au serveur impossible. Vérifie le réseau puis réessaie.');
+    error.status = 0;
+    throw error;
+  }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || ('Erreur serveur ' + response.status));
+    error.status = response.status;
+    throw error;
+  }
+  return data;
 }
 function explain(e) {
   if (e.cancelled) return 'Rendu annulé.';
   if (e.status === 0) return e.message;
-  if (e.status === 401) return 'Jeton refusé ou expiré. Clique sur « Changer » et colle un nouveau jeton.';
-  if (e.status === 403 && /rate limit/i.test(e.message)) return 'Trop de requêtes GitHub. Attends quelques minutes puis réessaie.';
-  if (e.status === 403 || e.status === 404) return 'Droits insuffisants : le jeton doit avoir Contents et Actions en lecture/écriture sur le dépôt Kidas.';
-  if (e.status === 409) return 'Conflit d’envoi sur GitHub. Réessaie dans quelques secondes.';
-  if (e.status === 422) return 'GitHub a refusé la demande de rendu. Vérifie que le workflow « Rendu vidéo » existe et accepte ces réglages.';
-  if (e.status === 413) return 'Fichier trop gros pour GitHub.';
+  if (e.status === 401 || e.status === 403) return e.message || 'Vérification de sécurité refusée. Réessaie.';
+  if (e.status === 413) return 'Fichier trop volumineux (50 Mo maximum).';
+  if (e.status === 429) return 'Trop de demandes. Attends un moment puis réessaie.';
+  if (e.status === 503) return e.message || 'Le serveur de rendu n’est pas encore configuré.';
   return e.message || 'Erreur inconnue.';
 }
-function toB64(buf) {
-  const u = new Uint8Array(buf); let s = '';
-  for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
-  return btoa(s);
-}
 
-/* ---------- affichage de l'état ---------- */
+function loadTurnstileScript() {
+  return new Promise((resolve, reject) => {
+    if (window.turnstile) return resolve();
+    const script = document.createElement('script');
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    script.async = true;
+    script.defer = true;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('Le service de vérification anti-robot est indisponible.'));
+    document.head.appendChild(script);
+  });
+}
+async function initSecurity() {
+  const statusEl = $('#securityStatus');
+  try {
+    const config = await api('/config');
+    if (!config.ready || !config.turnstileSiteKey) {
+      throw new Error('Configuration nécessaire : connecter un stockage Blob privé dans Vercel et renseigner les clés serveur/Turnstile.');
+    }
+    await loadTurnstileScript();
+    captchaWidgetId = window.turnstile.render('#captchaMount', {
+      sitekey: config.turnstileSiteKey,
+      size: 'invisible',
+      appearance: 'interaction-only',
+      callback: token => {
+        if (captchaResolve) { const resolve = captchaResolve; captchaResolve = null; captchaReject = null; resolve(token); }
+      },
+      'error-callback': () => {
+        if (captchaReject) { const reject = captchaReject; captchaResolve = null; captchaReject = null; reject(new Error('Vérification anti-robot impossible. Réessaie.')); }
+      },
+      'expired-callback': () => {
+        if (captchaReject) { const reject = captchaReject; captchaResolve = null; captchaReject = null; reject(new Error('La validation a expiré. Réessaie.')); }
+      }
+    });
+    securityReady = true;
+    securityMessage = '';
+    statusEl.textContent = 'Protection activée · aucun jeton GitHub personnel requis.';
+    statusEl.className = 'mut';
+  } catch (e) {
+    securityReady = false;
+    securityMessage = e.message || 'Le serveur de rendu est indisponible.';
+    statusEl.textContent = securityMessage;
+    statusEl.className = 'mut';
+  }
+  $('#go').disabled = !securityReady;
+}
+function captchaToken() {
+  return new Promise((resolve, reject) => {
+    if (!securityReady || captchaWidgetId === null) return reject(new Error(securityMessage || 'Protection de sécurité non configurée.'));
+    captchaResolve = resolve; captchaReject = reject;
+    try {
+      window.turnstile.reset(captchaWidgetId);
+      window.turnstile.execute(captchaWidgetId);
+    } catch (e) {
+      captchaResolve = null; captchaReject = null;
+      reject(new Error('Impossible de lancer la vérification anti-robot.'));
+    }
+  });
+}
 function setSteps(active, failed) {
   [...$('#steps').children].forEach((li, i) => {
     li.dataset.s = failed === i ? 'err' : i < active ? 'done' : i === active ? 'active' : 'pending';
@@ -294,16 +343,17 @@ function setSteps(active, failed) {
 }
 function status(msg, cls, url) {
   const s = $('#st'); s.textContent = msg; s.className = cls || 'mut';
-  $('#stl').hidden = !url; if (url) $('#stla').href = url;
+  $('#stl').hidden = !url;
+  if (url) $('#stla').href = url;
 }
 function hint(msg) { const h = $('#hint'); h.hidden = !msg; h.textContent = msg || ''; }
 function setBusy(b) {
   busy = b;
-  $('#go').disabled = b; $('#go').hidden = b;
-  $('#cancel').hidden = !b; $('#cancel').disabled = false;
+  $('#go').disabled = b || !securityReady;
+  $('#go').hidden = b;
+  $('#cancel').hidden = !b;
+  $('#cancel').disabled = false;
 }
-
-/* ---------- vérification du fichier (mêmes règles que html2mp4.py) ---------- */
 function analyze(t) {
   const count = (s, sub) => s.split(sub).length - 1;
   if (t.trim().length < 20 || !/<(?:!doctype|html|head|body|script|svg|canvas|div|style)\b/i.test(t))
@@ -348,43 +398,26 @@ function setFile(files) {
   const dt = new DataTransfer(); dt.items.add(files[0]); $('#file').files = dt.files;
   checkFile();
 }
-
-/* ---------- rendu ---------- */
-async function waitRelease(id, t0) {
-  let lastSeen = Date.now();
-  while (Date.now() - t0 < 95 * 60000) {
-    if (cancelled) { const e = new Error('annulé'); e.cancelled = true; throw e; }
-    await sleep(6000);
-    if (cancelled) { const e = new Error('annulé'); e.cancelled = true; throw e; }
-    const d = await gh('/actions/runs?event=workflow_dispatch&per_page=15');
-    const run = d.workflow_runs.find(r => r.display_title === 'Rendu ' + id);
-    const el = mmss(Date.now() - t0);
-    if (!run) {
-      if (Date.now() - lastSeen > 4 * 60000) throw new Error('Le rendu n’a pas démarré côté GitHub. Vérifie l’onglet Actions du dépôt puis réessaie.');
-      setSteps(1); status('Démarrage du rendu… (' + el + ')'); continue;
-    }
-    lastSeen = Date.now(); currentRunId = run.id;
-    if (run.status !== 'completed') {
-      setSteps(2);
-      status((run.status === 'queued' ? 'En file d’attente… ' : 'Rendu en cours… ') + '(' + el + ')', null, run.html_url);
-      hint('Une vidéo complète peut prendre plusieurs minutes. Tu peux quitter cette page : le rendu continue et reprendra ici.');
-      continue;
-    }
-    if (run.conclusion === 'cancelled') { const e = new Error('annulé'); e.cancelled = true; throw e; }
-    if (run.conclusion !== 'success') {
-      const e = new Error('Le rendu a échoué. Ouvre le journal pour voir pourquoi (ligne rouge ✗), corrige ton fichier puis réessaie.'); e.url = run.html_url; throw e;
-    }
-    setSteps(3); status('Publication de la vidéo…');
-    for (let k = 0; k < 10; k++) {
-      try { return await gh('/releases/tags/' + id); } catch (e) { if (e.status !== 404) throw e; await sleep(3000); }
-    }
-    throw new Error('Rendu terminé, mais la vidéo n’est pas encore publiée. Actualise l’historique dans un instant.');
-  }
-  throw new Error('Délai dépassé (plus de 95 minutes).');
+function uploadPrivateBlob(url, file) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    currentUploadXhr = xhr;
+    xhr.open('PUT', url, true);
+    xhr.setRequestHeader('Content-Type', 'text/html');
+    xhr.upload.onprogress = e => {
+      if (e.lengthComputable) status('Envoi sécurisé du HTML… ' + Math.round(e.loaded / e.total * 100) + '%');
+    };
+    xhr.onload = () => {
+      currentUploadXhr = null;
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error('Le stockage privé a refusé le fichier (' + xhr.status + ').'));
+    };
+    xhr.onerror = () => { currentUploadXhr = null; reject(new Error('Échec de l’envoi au stockage privé.')); };
+    xhr.onabort = () => { currentUploadXhr = null; const e = new Error('annulé'); e.cancelled = true; reject(e); };
+    xhr.send(file);
+  });
 }
-
 function mp4Of(rel) { return (rel.assets || []).find(x => x.name.toLowerCase().endsWith('.mp4')); }
-
 function showResult(rel) {
   const a = mp4Of(rel);
   const box = $('#res'); box.textContent = '';
@@ -413,17 +446,16 @@ function showResult(rel) {
   });
   box.append(v, info, bar);
 }
-
 async function loadList() {
   const ul = $('#list');
-  if (!token) { ul.innerHTML = '<li class="empty">Ajoute ton jeton pour voir l’historique.</li>'; return; }
   try {
-    const rels = await gh('/releases?per_page=12');
+    const data = await api('/videos');
     ul.textContent = '';
-    const items = rels.filter(r => mp4Of(r));
+    const items = data.items || [];
     if (!items.length) { ul.innerHTML = '<li class="empty">Aucune vidéo pour l’instant.<br>Dépose un fichier HTML ci-dessus pour commencer.</li>'; return; }
     for (const r of items) {
       const a = mp4Of(r);
+      if (!a) continue;
       const li = document.createElement('li');
       const meta = document.createElement('div'); meta.className = 'meta';
       const l = document.createElement('a'); l.href = a.browser_download_url; l.textContent = a.name;
@@ -436,18 +468,46 @@ async function loadList() {
         if (!confirm('Supprimer définitivement cette vidéo ?')) return;
         del.disabled = true;
         try {
-          await gh('/releases/' + r.id, { method: 'DELETE' });
-          if (r.tag_name) { try { await gh('/git/refs/tags/' + encodeURIComponent(r.tag_name), { method: 'DELETE' }); } catch (e) {} }
+          await api('/delete-video', { method: 'POST', body: { releaseId: r.id, tag: r.tag_name } });
           loadList();
         } catch (e) { del.disabled = false; alert(explain(e)); }
       };
       li.append(meta, del); ul.append(li);
     }
-  } catch (e) { ul.innerHTML = ''; const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'Liste indisponible : ' + explain(e); ul.append(li); }
+  } catch (e) {
+    ul.textContent = '';
+    const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'Historique indisponible : ' + explain(e); ul.append(li);
+  }
 }
-
+async function waitJob(id, t0) {
+  while (Date.now() - t0 < 95 * 60000) {
+    if (cancelled) { const e = new Error('annulé'); e.cancelled = true; throw e; }
+    await sleep(6000);
+    if (cancelled) { const e = new Error('annulé'); e.cancelled = true; throw e; }
+    const job = await api('/job?id=' + encodeURIComponent(id));
+    const elapsed = mmss(Date.now() - t0);
+    if (!job.found) {
+      setSteps(1); status('Démarrage du rendu… (' + elapsed + ')');
+      continue;
+    }
+    currentRunId = job.runId || currentRunId;
+    if (job.status !== 'completed') {
+      setSteps(2);
+      status((job.status === 'queued' ? 'En file d’attente… ' : 'Rendu en cours… ') + '(' + elapsed + ')', null, job.html_url);
+      hint('Le rendu peut prendre plusieurs minutes. Tu peux quitter cette page : le suivi reprendra à son retour.');
+      continue;
+    }
+    if (job.conclusion !== 'success') {
+      const e = new Error('Le rendu a échoué. Consulte le journal pour connaître la cause.'); e.url = job.html_url; throw e;
+    }
+    if (job.release) return job.release;
+    setSteps(3); status('Publication du MP4… (' + elapsed + ')');
+  }
+  throw new Error('Délai dépassé (plus de 95 minutes).');
+}
 async function finish(rel) {
-  showResult(rel); setSteps(4); status('Terminé ✓', 'ok'); hint(''); store.set('kidas_job', null); loadList();
+  showResult(rel); setSteps(4); status('Terminé ✓', 'ok'); hint('');
+  store.set('kidas_job', null); loadList();
 }
 function fail(e, step) {
   setSteps(0, step);
@@ -456,58 +516,66 @@ function fail(e, step) {
   hint(''); store.set('kidas_job', null);
 }
 function currentStepIndex() { return [...$('#steps').children].findIndex(li => li.dataset.s === 'active'); }
-
+async function cleanupUpload(id) {
+  try { await api('/cleanup', { method: 'POST', body: { id } }); } catch (e) {}
+}
 async function go() {
   if (busy) return;
   const f = $('#file').files[0];
   $('#progCard').hidden = false;
-  if (!token) { setSteps(-1); return status('Ajoute d’abord ton jeton GitHub.', 'err'); }
+  if (!securityReady) { setSteps(-1); return status(securityMessage || 'La sécurité du serveur n’est pas configurée.', 'err'); }
   if (!f) { setSteps(-1); return status('Choisis ou dépose un fichier HTML.', 'err'); }
   if (!verdict) await checkFile();
   if (!verdict || verdict.kind === 'invalid') { setSteps(-1); return status('Fichier refusé : il n’a pas été importé.', 'err'); }
   const m = MODES[$('#mode').value];
-  const id = 'v' + Date.now().toString(36);
+  const id = 'v' + Date.now().toString(36) + crypto.randomUUID().replace(/-/g, '').slice(0, 12);
   const t0 = Date.now();
   cancelled = false; currentRunId = null; setBusy(true); $('#res').textContent = ''; hint('');
-  let step = 0;
+  let step = 0, uploadComplete = false, dispatchAccepted = false;
   try {
-    setSteps(0); status('Envoi du fichier…');
-    await gh(`/contents/uploads/${id}.html`, { method: 'PUT',
-      body: JSON.stringify({ message: 'Import ' + id, content: toB64(await f.arrayBuffer()), branch: UPLOAD_BRANCH }) });
+    setSteps(0); status('Vérification de sécurité…');
+    const uploadCaptcha = await captchaToken();
     if (cancelled) { const e = new Error('annulé'); e.cancelled = true; throw e; }
-    step = 1; setSteps(1); status('Lancement du rendu…');
-    await sleep(2500);
-    await gh('/actions/workflows/render.yml/dispatches', { method: 'POST',
-      body: JSON.stringify({ ref: BRANCH, inputs: { fichier: `uploads/${id}.html`, fps: $('#fps').value, scale: m.scale, test: m.test, duration: $('#duration').value, format: $('#format').value, nom: f.name.replace(/\.html?$/i, ''), tag: id } }) });
+    const signed = await api('/upload-url', { method: 'POST', body: { id, captchaToken: uploadCaptcha } });
+    await uploadPrivateBlob(signed.url, f);
+    uploadComplete = true;
+    if (cancelled) { const e = new Error('annulé'); e.cancelled = true; throw e; }
+    step = 1; setSteps(1); status('Préparation du rendu…');
+    const renderCaptcha = await captchaToken();
+    if (cancelled) { const e = new Error('annulé'); e.cancelled = true; throw e; }
+    await api('/render', { method: 'POST', body: {
+      id, captchaToken: renderCaptcha, fps: $('#fps').value, scale: m.scale, test: m.test,
+      duration: $('#duration').value, format: $('#format').value, name: f.name.replace(/\.html?$/i, '')
+    }});
+    dispatchAccepted = true;
     store.set('kidas_job', JSON.stringify({ id, t0 }));
     step = 2;
-    await finish(await waitRelease(id, t0));
+    await finish(await waitJob(id, t0));
   } catch (e) {
+    if (uploadComplete && !dispatchAccepted && e.status && e.status >= 400) await cleanupUpload(id);
     const s = currentStepIndex();
     fail(e, s >= 0 ? s : step);
   }
   setBusy(false);
 }
-
 async function cancel() {
-  cancelled = true; $('#cancel').disabled = true; status('Annulation en cours…');
-  if (currentRunId) { try { await gh('/actions/runs/' + currentRunId + '/cancel', { method: 'POST' }); } catch (e) {} }
+  cancelled = true;
+  $('#cancel').disabled = true;
+  status('Annulation en cours…');
+  if (currentUploadXhr) currentUploadXhr.abort();
+  if (currentRunId) {
+    try { await api('/cancel', { method: 'POST', body: { runId: currentRunId } }); } catch (e) {}
+  }
 }
-
-/* reprise d'un rendu en cours après rechargement de la page */
 async function resume() {
-  const raw = store.get('kidas_job'); if (!raw || !token) return;
+  const raw = store.get('kidas_job'); if (!raw) return;
   let job; try { job = JSON.parse(raw); } catch (e) { return store.set('kidas_job', null); }
   if (!job.id || Date.now() - job.t0 > 95 * 60000) return store.set('kidas_job', null);
   cancelled = false; setBusy(true); $('#progCard').hidden = false; setSteps(2); status('Reprise du suivi du rendu…');
-  try { await finish(await waitRelease(job.id, job.t0)); }
+  try { await finish(await waitJob(job.id, job.t0)); }
   catch (e) { fail(e, Math.max(currentStepIndex(), 2)); }
   setBusy(false);
 }
-
-/* ---------- événements ---------- */
-$('#tokSave').onclick = () => { const v = $('#tok').value; if (v.trim()) { saveToken(v); $('#tok').value = ''; } };
-$('#tokDel').onclick = () => saveToken('');
 $('#file').onchange = checkFile;
 $('#go').onclick = go;
 $('#cancel').onclick = cancel;
@@ -523,9 +591,8 @@ const drop = $('#drop');
 drop.addEventListener('drop', e => setFile(e.dataTransfer && e.dataTransfer.files));
 window.addEventListener('dragover', e => e.preventDefault());
 window.addEventListener('drop', e => e.preventDefault());
-
-renderToken();
 loadList();
+initSecurity();
 resume();
 </script>
 </body>

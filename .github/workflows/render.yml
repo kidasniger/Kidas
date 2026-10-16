@@ -53,6 +53,14 @@ on:
         description: "Identifiant de la vidéo (rempli par la page web)"
         required: false
         default: ""
+      blob_id:
+        description: "Identifiant du HTML temporaire dans le stockage privé"
+        required: false
+        default: ""
+      cleanup_url:
+        description: "URL de nettoyage temporaire fournie par le site"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -64,30 +72,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Récupérer le HTML importé depuis la branche dédiée
+      - name: Préparer le HTML source
+        id: source
         env:
           FICHIER: ${{ inputs.fichier }}
+          BLOB_ID: ${{ inputs.blob_id }}
+          BLOB_STORE_ID: ${{ secrets.BLOB_STORE_ID }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
         run: |
-          case "$FICHIER" in
-            uploads/*)
-              git fetch --no-tags origin video-uploads
-              mkdir -p "$(dirname "$FICHIER")"
-              git show "FETCH_HEAD:$FICHIER" > "$FICHIER"
-              ;;
-          esac
+          set -euo pipefail
+          if [ -n "$BLOB_ID" ]; then
+            [[ "$BLOB_ID" =~ ^v[a-z0-9]{12,40}$ ]] || { echo "::error::Identifiant temporaire invalide."; exit 1; }
+            : "${BLOB_STORE_ID:?Le secret GitHub BLOB_STORE_ID est requis}"
+            : "${BLOB_READ_WRITE_TOKEN:?Le secret GitHub BLOB_READ_WRITE_TOKEN est requis}"
+            mkdir -p .kidas-tmp
+            BLOB_URL="https://${BLOB_STORE_ID}.private.blob.vercel-storage.com/incoming/${BLOB_ID}.html"
+            curl --fail --silent --show-error --location --retry 2 \
+              --header "Authorization: Bearer ${BLOB_READ_WRITE_TOKEN}" \
+              "$BLOB_URL" --output .kidas-tmp/input.html
+            echo "fichier=.kidas-tmp/input.html" >> "$GITHUB_OUTPUT"
+          else
+            case "$FICHIER" in
+              uploads/*)
+                git fetch --no-tags origin video-uploads
+                mkdir -p "$(dirname "$FICHIER")"
+                git show "FETCH_HEAD:$FICHIER" > "$FICHIER"
+                ;;
+            esac
+            if [ ! -f "$FICHIER" ]; then
+              git fetch --depth=1 origin uploads
+              git checkout FETCH_HEAD -- "$FICHIER"
+            fi
+            echo "fichier=$FICHIER" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Récupérer le fichier importé
-        env:
-          FICHIER: ${{ inputs.fichier }}
-        run: |
-          if [ ! -f "$FICHIER" ]; then
-            git fetch --depth=1 origin uploads
-            git checkout FETCH_HEAD -- "$FICHIER"
-          fi
 
       - name: Installer FFmpeg et les dépendances
         run: |
@@ -96,7 +117,7 @@ jobs:
 
       - name: Rendre la vidéo
         env:
-          FICHIER: ${{ inputs.fichier }}
+          FICHIER: ${{ steps.source.outputs.fichier }}
           FPS: ${{ inputs.fps }}
           SCALE: ${{ inputs.scale }}
           TEST: ${{ inputs.test }}
@@ -126,3 +147,19 @@ jobs:
         run: |
           gh release create "$TAG" $(find . -name '*.mp4' -not -path './.git/*') \
             --title "Vidéo $TAG" --notes "Générée par le workflow Rendu vidéo."
+      - name: Supprimer les fichiers temporaires
+        if: always()
+        env:
+          BLOB_ID: ${{ inputs.blob_id }}
+          CLEANUP_URL: ${{ inputs.cleanup_url }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+        run: |
+          rm -rf .kidas-tmp
+          if [ -n "$BLOB_ID" ] && [ -n "$CLEANUP_URL" ] && [ -n "$BLOB_READ_WRITE_TOKEN" ]; then
+            curl --fail --silent --show-error --location --retry 2 \
+              -X POST "$CLEANUP_URL" \
+              -H "Authorization: Bearer ${BLOB_READ_WRITE_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data "{\"id\":\"${BLOB_ID}\"}" \
+              || echo "::warning::Le nettoyage du HTML privé a échoué; réessaie via la page de rendu."
+          fi
