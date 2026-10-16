@@ -1,5 +1,5 @@
 import { del } from '@vercel/blob';
-import { readBody, sameOrigin, send, validJobId, publicError } from './_lib.js';
+import { readBody, sameOrigin, send, validJobId, publicError } from '../lib/kidas-server.js';
 import { timingSafeEqual } from 'node:crypto';
 
 function validInternalToken(req) {
