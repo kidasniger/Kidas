@@ -1,4 +1,4 @@
-import { githubRequest, send, publicError } from './_lib.js';
+import { githubRequest, send, publicError } from '../lib/kidas-server.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return send(res, 405, { error: 'Méthode non autorisée.' });
