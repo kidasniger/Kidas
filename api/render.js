@@ -1,5 +1,5 @@
 import { head } from '@vercel/blob';
-import { githubRequest, readBody, safeName, sameOrigin, send, validJobId, verifyTurnstile, publicError } from './_lib.js';
+import { githubRequest, readBody, safeName, sameOrigin, send, validJobId, verifyTurnstile, publicError } from '../lib/kidas-server.js';
 
 const MAX_BYTES = 50 * 1000 * 1000;
 const FORMATS = new Set(['auto', 'portrait', 'landscape', 'square']);
