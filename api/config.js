@@ -5,7 +5,6 @@ export default async function handler(req, res) {
   const ready = Boolean(
     process.env.KIDAS_GITHUB_TOKEN &&
     process.env.BLOB_STORE_ID &&
-    process.env.VERCEL_OIDC_TOKEN &&
     process.env.TURNSTILE_SECRET_KEY
   );
   return send(res, 200, {
