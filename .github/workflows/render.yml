@@ -57,16 +57,12 @@ on:
         description: "Identifiant du HTML temporaire dans le stockage privé"
         required: false
         default: ""
-      source_expires:
-        description: "Expiration du lien temporaire vers le HTML"
+      source_url:
+        description: "URL signée temporaire pour lire le HTML privé"
         required: false
         default: ""
-      source_signature:
-        description: "Signature temporaire pour lire le HTML privé"
-        required: false
-        default: ""
-      cleanup_signature:
-        description: "Signature temporaire pour supprimer le HTML privé"
+      delete_url:
+        description: "URL signée temporaire pour supprimer le HTML privé"
         required: false
         default: ""
 
@@ -85,16 +81,15 @@ jobs:
         env:
           FICHIER: ${{ inputs.fichier }}
           BLOB_ID: ${{ inputs.blob_id }}
-          SOURCE_EXPIRES: ${{ inputs.source_expires }}
-          SOURCE_SIGNATURE: ${{ inputs.source_signature }}
+          SOURCE_URL: ${{ inputs.source_url }}
+          DELETE_URL: ${{ inputs.delete_url }}
         run: |
           set -euo pipefail
           if [ -n "$BLOB_ID" ]; then
             [[ "$BLOB_ID" =~ ^v[a-z0-9]{12,40}$ ]] || { echo "::error::Identifiant temporaire invalide."; exit 1; }
-            [[ "$SOURCE_EXPIRES" =~ ^[0-9]{13}$ ]] || { echo "::error::Expiration du lien invalide."; exit 1; }
-            [[ "$SOURCE_SIGNATURE" =~ ^[a-f0-9]{64}$ ]] || { echo "::error::Signature du lien invalide."; exit 1; }
+            [[ "$SOURCE_URL" =~ ^https://[A-Za-z0-9-]+\.private\.blob\.vercel-storage\.com/incoming/${BLOB_ID}\.html\? ]] || { echo "::error::URL signée de lecture invalide."; exit 1; }
+            [[ "$DELETE_URL" =~ ^https://[A-Za-z0-9-]+\.private\.blob\.vercel-storage\.com/incoming/${BLOB_ID}\.html\? ]] || { echo "::error::URL signée de suppression invalide."; exit 1; }
             mkdir -p kidas-tmp
-            SOURCE_URL="https://kidas-xi.vercel.app/api/source?id=${BLOB_ID}&expires=${SOURCE_EXPIRES}&signature=${SOURCE_SIGNATURE}"
             curl --fail --silent --show-error --location --retry 2 \
               "$SOURCE_URL" --output kidas-tmp/input.html
             test -s kidas-tmp/input.html || { echo "::error::Le HTML temporaire est vide."; exit 1; }
@@ -159,14 +154,14 @@ jobs:
         if: always()
         env:
           BLOB_ID: ${{ inputs.blob_id }}
-          SOURCE_EXPIRES: ${{ inputs.source_expires }}
-          CLEANUP_SIGNATURE: ${{ inputs.cleanup_signature }}
+          DELETE_URL: ${{ inputs.delete_url }}
         run: |
           rm -rf kidas-tmp
-          if [ -n "$BLOB_ID" ] && [ -n "$SOURCE_EXPIRES" ] && [ -n "$CLEANUP_SIGNATURE" ]; then
-            curl --fail --silent --show-error --location --retry 2 \
-              -X POST "https://kidas-xi.vercel.app/api/cleanup" \
-              -H "Content-Type: application/json" \
-              --data "{\"id\":\"${BLOB_ID}\",\"expires\":\"${SOURCE_EXPIRES}\",\"signature\":\"${CLEANUP_SIGNATURE}\"}" \
-              || echo "::warning::Le nettoyage du HTML privé a échoué; une nouvelle tentative peut être nécessaire."
+          if [ -n "$BLOB_ID" ] && [ -n "$DELETE_URL" ]; then
+            if [[ "$DELETE_URL" =~ ^https://[A-Za-z0-9-]+\.private\.blob\.vercel-storage\.com/incoming/${BLOB_ID}\.html\? ]]; then
+              curl --fail --silent --show-error --location --retry 2 -X DELETE "$DELETE_URL" \
+                || echo "::warning::Le nettoyage du HTML privé a échoué; le lien signé expirera automatiquement."
+            else
+              echo "::warning::URL signée de suppression invalide; le HTML sera protégé par l'expiration du lien."
+            fi
           fi
