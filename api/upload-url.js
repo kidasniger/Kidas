@@ -1,5 +1,5 @@
 import { issueSignedToken, presignUrl } from '@vercel/blob';
-import { readBody, sameOrigin, send, validJobId, verifyTurnstile, publicError } from './_lib.js';
+import { readBody, sameOrigin, send, validJobId, verifyTurnstile, publicError } from '../lib/kidas-server.js';
 
 const MAX_BYTES = 50 * 1000 * 1000;
 
