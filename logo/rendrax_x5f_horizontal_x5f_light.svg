@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 120" width="1024" height="236">
+  <defs>
+    <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00D4FF"/>
+      <stop offset="28%" stop-color="#155BFF"/>
+      <stop offset="68%" stop-color="#6D28FF"/>
+      <stop offset="100%" stop-color="#C000FF"/>
+    </linearGradient>
+    <mask id="playHole" maskUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="120" height="120" fill="white"/>
+      <path d="M 38 22 L 82 42 L 38 62 Z" fill="black"/>
+    </mask>
+  </defs>
+  <!-- ICON -->
+  <g transform="translate(0,0)" mask="url(#playHole)">
+    <path d="M 12 6 L 62 6 C 92 6 110 20 110 41.5 C 110 61 94 71 76 75.5 L 115 115 L 76 115 L 41 72 L 48 70 L 48 115 L 14 115 C 14 115 12 106 12 92 L 12 6 Z" fill="url(#rg)"/>
+    <path d="M 12 6 C 24 10 40 18 48 22 L 12 22 Z" fill="#00D4FF" opacity="0.85"/>
+  </g>
+  <g>
+    <path d="M 93 56 L 118 44 L 102 63 Z" fill="url(#rg)"/>
+    <path d="M 95 70 L 112 62 L 101 76 Z" fill="url(#rg)" opacity="0.9"/>
+  </g>
+  <!-- TEXT RENDRAX -->
+  <g font-family="'Space Grotesk','Syne','Geist','Sora',sans-serif" font-weight="800" letter-spacing="-0.02em">
+    <text x="142" y="78" font-size="62" fill="#FFFFFF" letter-spacing="1.5">RENDRAX</text>
+  </g>
+</svg>
