@@ -57,6 +57,18 @@ on:
         description: "Identifiant du HTML temporaire dans le stockage privé"
         required: false
         default: ""
+      source_expires:
+        description: "Expiration du lien temporaire vers le HTML"
+        required: false
+        default: ""
+      source_signature:
+        description: "Signature temporaire pour lire le HTML privé"
+        required: false
+        default: ""
+      cleanup_signature:
+        description: "Signature temporaire pour supprimer le HTML privé"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -73,19 +85,19 @@ jobs:
         env:
           FICHIER: ${{ inputs.fichier }}
           BLOB_ID: ${{ inputs.blob_id }}
-          BLOB_STORE_ID: ${{ secrets.BLOB_STORE_ID }}
-          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          SOURCE_EXPIRES: ${{ inputs.source_expires }}
+          SOURCE_SIGNATURE: ${{ inputs.source_signature }}
         run: |
           set -euo pipefail
           if [ -n "$BLOB_ID" ]; then
             [[ "$BLOB_ID" =~ ^v[a-z0-9]{12,40}$ ]] || { echo "::error::Identifiant temporaire invalide."; exit 1; }
-            : "${BLOB_STORE_ID:?Le secret GitHub BLOB_STORE_ID est requis}"
-            : "${BLOB_READ_WRITE_TOKEN:?Le secret GitHub BLOB_READ_WRITE_TOKEN est requis}"
+            [[ "$SOURCE_EXPIRES" =~ ^[0-9]{13}$ ]] || { echo "::error::Expiration du lien invalide."; exit 1; }
+            [[ "$SOURCE_SIGNATURE" =~ ^[a-f0-9]{64}$ ]] || { echo "::error::Signature du lien invalide."; exit 1; }
             mkdir -p kidas-tmp
-            BLOB_URL="https://${BLOB_STORE_ID}.private.blob.vercel-storage.com/incoming/${BLOB_ID}.html"
+            SOURCE_URL="https://kidas-xi.vercel.app/api/source?id=${BLOB_ID}&expires=${SOURCE_EXPIRES}&signature=${SOURCE_SIGNATURE}"
             curl --fail --silent --show-error --location --retry 2 \
-              --header "Authorization: Bearer ${BLOB_READ_WRITE_TOKEN}" \
-              "$BLOB_URL" --output kidas-tmp/input.html
+              "$SOURCE_URL" --output kidas-tmp/input.html
+            test -s kidas-tmp/input.html || { echo "::error::Le HTML temporaire est vide."; exit 1; }
             echo "fichier=kidas-tmp/input.html" >> "$GITHUB_OUTPUT"
           else
             case "$FICHIER" in
@@ -147,15 +159,14 @@ jobs:
         if: always()
         env:
           BLOB_ID: ${{ inputs.blob_id }}
-          CLEANUP_URL: https://kidas-xi.vercel.app/api/cleanup
-          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          SOURCE_EXPIRES: ${{ inputs.source_expires }}
+          CLEANUP_SIGNATURE: ${{ inputs.cleanup_signature }}
         run: |
           rm -rf kidas-tmp
-          if [ -n "$BLOB_ID" ] && [ -n "$CLEANUP_URL" ] && [ -n "$BLOB_READ_WRITE_TOKEN" ]; then
+          if [ -n "$BLOB_ID" ] && [ -n "$SOURCE_EXPIRES" ] && [ -n "$CLEANUP_SIGNATURE" ]; then
             curl --fail --silent --show-error --location --retry 2 \
-              -X POST "$CLEANUP_URL" \
-              -H "Authorization: Bearer ${BLOB_READ_WRITE_TOKEN}" \
+              -X POST "https://kidas-xi.vercel.app/api/cleanup" \
               -H "Content-Type: application/json" \
-              --data "{\"id\":\"${BLOB_ID}\"}" \
-              || echo "::warning::Le nettoyage du HTML privé a échoué; réessaie via la page de rendu."
+              --data "{\"id\":\"${BLOB_ID}\",\"expires\":\"${SOURCE_EXPIRES}\",\"signature\":\"${CLEANUP_SIGNATURE}\"}" \
+              || echo "::warning::Le nettoyage du HTML privé a échoué; une nouvelle tentative peut être nécessaire."
           fi
