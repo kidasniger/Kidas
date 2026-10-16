@@ -30,12 +30,9 @@ export default async function handler(req, res) {
       error.status = 413;
       throw error;
     }
-    const origin = new URL(req.headers.origin);
-    const cleanupUrl = new URL('/api/cleanup', origin).href;
     const inputs = {
       fichier: 'kidas.html',
       blob_id: id,
-      cleanup_url: cleanupUrl,
       fps: String(fps),
       scale: String(scale),
       test: String(test),
