@@ -1,4 +1,4 @@
-import { githubRequest, send, validJobId, publicError } from './_lib.js';
+import { githubRequest, send, validJobId, publicError } from '../lib/kidas-server.js';
 
 function releaseSummary(release) {
   return {
