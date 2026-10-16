@@ -32,6 +32,7 @@ async function deleteVideoArtifact(runId) {
     `/repos/${REPOSITORY}/actions/runs/${runId}/artifacts?per_page=100`
   );
   const artifacts = Array.isArray(data?.artifacts) ? data.artifacts : [];
+  let removed = 0;
 
   for (const artifact of artifacts) {
     if (artifact.name !== VIDEO_ARTIFACT_NAME) continue;
@@ -40,12 +41,14 @@ async function deleteVideoArtifact(runId) {
         `/repos/${REPOSITORY}/actions/artifacts/${artifact.id}`,
         { method: 'DELETE' }
       );
+      removed += 1;
     } catch (error) {
       // Missing/expired artifacts are already unavailable; all other errors
       // must stop the operation before the public Release is removed.
       if (error.status !== 404 && error.status !== 410) throw error;
     }
   }
+  return removed;
 }
 
 export default async function handler(req, res) {
@@ -69,7 +72,7 @@ export default async function handler(req, res) {
     // permission, keep the public Release and tag intact so the operation can
     // be retried after the token permissions are fixed.
     const run = await findRenderRun(tag);
-    if (run) await deleteVideoArtifact(run.id);
+    const artifactsRemoved = run ? await deleteVideoArtifact(run.id) : 0;
 
     await githubRequest(
       `/repos/${REPOSITORY}/releases/${releaseId}`,
@@ -85,7 +88,7 @@ export default async function handler(req, res) {
       if (error.status !== 404) throw error;
     }
 
-    return send(res, 200, { success: true, artifactRemoved: Boolean(run), releaseRemoved: true, tagRemoved: true });
+    return send(res, 200, { success: true, artifactsRemoved, releaseRemoved: true, tagRemoved: true });
   } catch (error) {
     const result = publicError(error);
     return send(res, result.status, result.body);
