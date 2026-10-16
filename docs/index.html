@@ -7,6 +7,11 @@
 <meta name="theme-color" content="#0c0c10" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f5f4f0" media="(prefers-color-scheme: light)">
 <title>HTML → MP4 · Kidas Studio</title>
+<script>
+if (location.hostname.endsWith('github.io')) {
+  location.replace('https://kidas-xi.vercel.app/');
+}
+</script>
 <style>
 :root{
   --bg:#f5f4f0;--surf:#ffffff;--surf2:#efede7;--tx:#16161a;--mut:#6b6a72;--bd:#e2e0d8;
@@ -294,7 +299,10 @@ async function initSecurity() {
   try {
     const config = await api('/config');
     if (!config.ready || !config.turnstileSiteKey) {
-      throw new Error('Configuration nécessaire : connecter un stockage Blob privé dans Vercel et renseigner les clés serveur/Turnstile.');
+      const missing = Array.isArray(config.missing) ? config.missing : [];
+      const details = missing.length ? 'Variables Vercel manquantes : ' + missing.join(', ') + '.' :
+        'La clé publique Turnstile est absente.';
+      throw new Error('Configuration incomplète. ' + details);
     }
     await loadTurnstileScript();
     captchaWidgetId = window.turnstile.render('#captchaMount', {
