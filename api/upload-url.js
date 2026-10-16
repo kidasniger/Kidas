@@ -10,7 +10,7 @@ export default async function handler(req, res) {
   if (!validJobId(id)) return send(res, 400, { error: 'Identifiant temporaire invalide.' });
   try {
     await verifyTurnstile(req, captchaToken);
-    if (!process.env.BLOB_STORE_ID || !process.env.VERCEL_OIDC_TOKEN) {
+    if (!process.env.BLOB_STORE_ID) {
       const error = new Error('Le stockage Blob privé doit être connecté au projet Vercel.');
       error.status = 503;
       throw error;
