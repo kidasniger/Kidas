@@ -1,5 +1,5 @@
 import { head } from '@vercel/blob';
-import { githubRequest, readBody, safeName, sameOrigin, send, validJobId, verifyTurnstile, publicError } from '../lib/kidas-server.js';
+import { githubRequest, readBody, safeName, sameOrigin, send, validJobId, verifyTurnstile, publicError, signWorkflowCapability } from '../lib/kidas-server.js';
 
 const MAX_BYTES = 50 * 1000 * 1000;
 const FORMATS = new Set(['auto', 'portrait', 'landscape', 'square']);
@@ -30,9 +30,15 @@ export default async function handler(req, res) {
       error.status = 413;
       throw error;
     }
+    const expires = String(Date.now() + 110 * 60 * 1000);
+    const sourceSignature = signWorkflowCapability('source', id, expires);
+    const cleanupSignature = signWorkflowCapability('cleanup', id, expires);
     const inputs = {
       fichier: 'kidas.html',
       blob_id: id,
+      source_expires: expires,
+      source_signature: sourceSignature,
+      cleanup_signature: cleanupSignature,
       fps: String(fps),
       scale: String(scale),
       test: String(test),
