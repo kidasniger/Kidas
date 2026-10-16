@@ -57,10 +57,6 @@ on:
         description: "Identifiant du HTML temporaire dans le stockage privé"
         required: false
         default: ""
-      cleanup_url:
-        description: "URL de nettoyage temporaire fournie par le site"
-        required: false
-        default: ""
 
 permissions:
   contents: write
@@ -151,7 +147,7 @@ jobs:
         if: always()
         env:
           BLOB_ID: ${{ inputs.blob_id }}
-          CLEANUP_URL: ${{ inputs.cleanup_url }}
+          CLEANUP_URL: https://kidas-xi.vercel.app/api/cleanup
           BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
         run: |
           rm -rf kidas-tmp
