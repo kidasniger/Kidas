@@ -1,4 +1,4 @@
-import { head, issueSignedToken, presignUrl } from '@vercel/blob';
+import { head } from '@vercel/blob';
 import { githubRequest, readBody, safeName, sameOrigin, send, validJobId, verifyTurnstile, publicError } from '../lib/kidas-server.js';
 
 const MAX_BYTES = 50 * 1000 * 1000;
@@ -31,36 +31,10 @@ export default async function handler(req, res) {
       error.status = 413;
       throw error;
     }
-    stage = 'création des liens temporaires de lecture et suppression';
-    const validUntil = Date.now() + 110 * 60 * 1000;
-    const sourceToken = await issueSignedToken({
-      pathname,
-      operations: ['get'],
-      validUntil
-    });
-    const deleteToken = await issueSignedToken({
-      pathname,
-      operations: ['delete'],
-      validUntil
-    });
-    const sourceUrl = await presignUrl(sourceToken, {
-      operation: 'get',
-      pathname,
-      access: 'private',
-      validUntil,
-      useCache: false
-    });
-    const deleteUrl = await presignUrl(deleteToken, {
-      operation: 'delete',
-      pathname,
-      access: 'private',
-      validUntil
-    });
+    stage = 'préparation du déclenchement du rendu';
     const inputs = {
       fichier: 'kidas.html',
       blob_id: id,
-      source_url: sourceUrl.presignedUrl,
-      delete_url: deleteUrl.presignedUrl,
       fps: String(fps),
       scale: String(scale),
       test: String(test),
