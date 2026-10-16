@@ -19,7 +19,11 @@ async function findRenderRun(tag) {
     );
 
     if (match) return match;
-    if (runs.length < RUNS_PAGE_SIZE) return null;
+    if (runs.length < RUNS_PAGE_SIZE) {
+      const error = new Error('Impossible de retrouver le rendu associé à cette vidéo. Aucune suppression n’a été effectuée.');
+      error.status = 503;
+      throw error;
+    }
   }
 
   const error = new Error('Le rendu associé à cette vidéo est trop ancien pour être localisé automatiquement. Aucune suppression n’a été effectuée.');
