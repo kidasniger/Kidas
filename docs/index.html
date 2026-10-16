@@ -321,7 +321,7 @@ async function initSecurity() {
     statusEl.textContent = securityMessage;
     statusEl.className = 'mut';
   }
-  $('#go').disabled = !securityReady;
+  $('#go').disabled = !securityReady || busy;
 }
 function captchaToken() {
   return new Promise((resolve, reject) => {

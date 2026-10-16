@@ -85,12 +85,12 @@ jobs:
             [[ "$BLOB_ID" =~ ^v[a-z0-9]{12,40}$ ]] || { echo "::error::Identifiant temporaire invalide."; exit 1; }
             : "${BLOB_STORE_ID:?Le secret GitHub BLOB_STORE_ID est requis}"
             : "${BLOB_READ_WRITE_TOKEN:?Le secret GitHub BLOB_READ_WRITE_TOKEN est requis}"
-            mkdir -p .kidas-tmp
+            mkdir -p kidas-tmp
             BLOB_URL="https://${BLOB_STORE_ID}.private.blob.vercel-storage.com/incoming/${BLOB_ID}.html"
             curl --fail --silent --show-error --location --retry 2 \
               --header "Authorization: Bearer ${BLOB_READ_WRITE_TOKEN}" \
-              "$BLOB_URL" --output .kidas-tmp/input.html
-            echo "fichier=.kidas-tmp/input.html" >> "$GITHUB_OUTPUT"
+              "$BLOB_URL" --output kidas-tmp/input.html
+            echo "fichier=kidas-tmp/input.html" >> "$GITHUB_OUTPUT"
           else
             case "$FICHIER" in
               uploads/*)
@@ -154,7 +154,7 @@ jobs:
           CLEANUP_URL: ${{ inputs.cleanup_url }}
           BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
         run: |
-          rm -rf .kidas-tmp
+          rm -rf kidas-tmp
           if [ -n "$BLOB_ID" ] && [ -n "$CLEANUP_URL" ] && [ -n "$BLOB_READ_WRITE_TOKEN" ]; then
             curl --fail --silent --show-error --location --retry 2 \
               -X POST "$CLEANUP_URL" \
