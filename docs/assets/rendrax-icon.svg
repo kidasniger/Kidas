@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <title>RENDRAX</title>
+  <defs>
+    <linearGradient id="rendrax-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00D4FF"/>
+      <stop offset="28%" stop-color="#155BFF"/>
+      <stop offset="68%" stop-color="#6D28FF"/>
+      <stop offset="100%" stop-color="#C000FF"/>
+    </linearGradient>
+    <mask id="rendrax-play-hole" maskUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="120" height="120" fill="#fff"/>
+      <path d="M38 22 L82 42 L38 62 Z" fill="#000"/>
+    </mask>
+  </defs>
+  <g mask="url(#rendrax-play-hole)">
+    <path d="M12 6 L62 6 C92 6 110 20 110 41.5 C110 61 94 71 76 75.5 L115 115 L76 115 L41 72 L48 70 L48 115 L14 115 C14 115 12 106 12 92 L12 6 Z" fill="url(#rendrax-gradient)"/>
+    <path d="M12 6 C24 10 40 18 48 22 L12 22 Z" fill="#00D4FF" opacity=".85"/>
+  </g>
+  <g fill="url(#rendrax-gradient)">
+    <path d="M93 56 L118 44 L102 63 Z"/>
+    <path d="M95 70 L112 62 L101 76 Z" opacity=".9"/>
+  </g>
+</svg>

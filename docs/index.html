@@ -3,10 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="description" content="Transforme une animation HTML en vidéo MP4 avec le son, rendue image par image par GitHub Actions.">
+<meta name="description" content="RENDRAX transforme tes animations HTML en vidéos MP4 avec le son, grâce à un rendu image par image.">
+<meta name="application-name" content="RENDRAX">
+<meta property="og:title" content="RENDRAX — HTML vers MP4">
+<meta property="og:description" content="Transforme tes animations HTML en vidéos MP4 avec le son.">
+<meta property="og:type" content="website">
+<link rel="icon" href="/assets/rendrax-icon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/assets/rendrax-icon.svg" type="image/svg+xml">
 <meta name="theme-color" content="#0c0c10" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f5f4f0" media="(prefers-color-scheme: light)">
-<title>HTML → MP4 · Kidas Studio</title>
+<title>HTML → MP4 · RENDRAX</title>
 <script>
 if (location.hostname.endsWith('github.io')) {
   location.replace('https://kidas-xi.vercel.app/');
@@ -34,10 +40,8 @@ svg{flex:none}
 
 /* en-tête */
 header.top{display:flex;flex-direction:column;gap:6px;padding:6px 2px 10px}
-.brand{display:flex;align-items:center;gap:8px;font:600 .72rem/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
-.rec{width:8px;height:8px;border-radius:50%;background:var(--ac);box-shadow:0 0 0 4px color-mix(in srgb,var(--ac) 22%,transparent);animation:pulse 2s ease-in-out infinite}
-@keyframes pulse{50%{opacity:.35}}
-@media(prefers-reduced-motion:reduce){.rec{animation:none}}
+.brand{display:flex;align-items:center;width:100%;margin:0 0 2px}
+.brand-logo{display:block;width:min(100%,220px);height:auto;max-height:54px;object-fit:contain;object-position:left center}
 h1{font-size:2rem;line-height:1.05;letter-spacing:-.03em;margin:4px 0 0;font-weight:800}
 h1 span{color:var(--ac)}
 .sub{color:var(--mut);margin:0;font-size:.95rem;text-wrap:pretty}
@@ -137,7 +141,7 @@ footer{text-align:center;color:var(--mut);font:500 .7rem/1 var(--mono);letter-sp
 <body>
 <main>
   <header class="top">
-    <div class="brand"><span class="rec" aria-hidden="true"></span>Kidas Studio</div>
+    <div class="brand"><img class="brand-logo" src="/assets/rendrax-logo.svg" alt="RENDRAX" width="520" height="120"></div>
     <h1 aria-label="HTML vers MP4">HTML <span aria-hidden="true">→</span> MP4</h1>
     <p class="sub">Importe ton animation HTML : le MP4 est généré sur un serveur, sans conserver le HTML dans le dépôt.</p>
   </header>
