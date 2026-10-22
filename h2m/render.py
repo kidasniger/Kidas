@@ -34,7 +34,6 @@ def render(html_path, args):
             die(label)
         info(f"Fichier vérifié : {label}")
         text, profile = patch_html(text)
-        speed = float(getattr(args, "speed", 1.0))
         precise_candidate = profile in PRECISE_PROFILES
         W, H = choose_frame_size(text, "auto" if precise_candidate else args.format)
         page = tmp / "page.html"
@@ -106,7 +105,7 @@ def render(html_path, args):
                 total = float(cdp.ev("window.__video.duration"))
             else:
                 total = editpro_duration(text)
-            dur = min(total / speed, args.duration) if args.duration > 0 else total / speed
+            dur = min(total, args.duration) if args.duration > 0 else total
             if args.test > 0:
                 dur = min(dur, args.test)
             fps = args.fps
@@ -155,40 +154,32 @@ def render(html_path, args):
             mode = "synchronisé"
         else:
             # Mode générique : la page n'a besoin ni de .stage, ni de D, ni d'AUD/MUS.
-            try:
-                cdp.ev(
-                    f"(()=>{{const rate={speed};for(const media of document.querySelectorAll('audio,video'))"
-                    "{media.playbackRate=rate;if('preservesPitch' in media)media.preservesPitch=true;}"
-                    "for(const animation of document.getAnimations()){try{animation.playbackRate=rate}catch(e){}}return true})()",
-                    await_promise=False)
-            except RuntimeError:
-                warn("Impossible d'ajuster la vitesse des médias de cette page.")
-
-            try:
-                media_dur = cdp.ev("(()=>Math.max(0,...[...document.querySelectorAll('audio,video')].map(x=>x.duration).filter(x=>Number.isFinite(x)&&x>0)))()", await_promise=False)
-            except RuntimeError:
-                media_dur = 0
-            if not media_dur:
-                # Pas de <audio>/<video> : on cherche une durée déclarée par la page (const D = 48.59…).
+            if args.duration > 0:
+                dur = args.duration
+            else:
                 try:
-                    media_dur = cdp.ev(
-                        "(()=>{for(const n of ['D','DUR','DURATION','TOTAL','TOTAL_DURATION','VIDEO_DURATION']){"
-                        "try{const v=(0,eval)(n);if(typeof v==='number'&&isFinite(v)&&v>=2&&v<=900)return v}catch(e){}}return 0})()",
-                        await_promise=False)
+                    media_dur = cdp.ev("(()=>Math.max(0,...[...document.querySelectorAll('audio,video')].map(x=>x.duration).filter(x=>Number.isFinite(x)&&x>0)))()", await_promise=False)
                 except RuntimeError:
                     media_dur = 0
-                if media_dur:
-                    info(f"Durée déclarée par la page : {float(media_dur):.2f} s.")
-                else:
-                    warn("Durée de la page non détectée : 60 s par défaut. Utilise --duration N pour la fixer.")
-            dur = float(media_dur or 60.0) / speed
-            if args.duration > 0:
-                dur = min(dur, args.duration)
+                if not media_dur:
+                    # Pas de <audio>/<video> : on cherche une durée déclarée par la page (const D = 48.59…).
+                    try:
+                        media_dur = cdp.ev(
+                            "(()=>{for(const n of ['D','DUR','DURATION','TOTAL','TOTAL_DURATION','VIDEO_DURATION']){"
+                            "try{const v=(0,eval)(n);if(typeof v==='number'&&isFinite(v)&&v>=2&&v<=900)return v}catch(e){}}return 0})()",
+                            await_promise=False)
+                    except RuntimeError:
+                        media_dur = 0
+                    if media_dur:
+                        info(f"Durée déclarée par la page : {float(media_dur):.2f} s.")
+                    else:
+                        warn("Durée de la page non détectée : 60 s par défaut. Utilise --duration N pour la fixer.")
+                dur = float(media_dur or 60.0)
             if args.test > 0:
                 dur = min(dur, args.test)
             fps = args.fps
             n_frames = max(1, int(round(dur * fps)))
-            info(f"Mode universel · durée {dur:.2f} s · vitesse {speed:g}× · {fps} i/s · capture de la fenêtre")
+            info(f"Mode universel · durée {dur:.2f} s · {fps} i/s · capture de la fenêtre")
             clip = {"x": 0, "y": 0, "width": W, "height": H, "scale": args.scale}
             audio_inputs = []
             mode = "universel"
@@ -196,27 +187,25 @@ def render(html_path, args):
             # Certaines animations (dont EditPro – Vidéo 60 s) restent immobiles
             # tant que leur bouton de démarrage n'a pas reçu une vraie action pointeur.
             try:
-                start_selector = (
-                    'button,[role="button"],input[type=button],input[type=submit],a[role="button"]'
-                )
-                if getattr(args, "click_start", False):
-                    start_selector += ',#go,[data-start-button],[data-action="start"]'
-                target_js = r"""(() => {
-                    const nodes = [...document.querySelectorAll(__H2M_START_SELECTOR__)];
+                target = cdp.ev(r"""(() => {
                     const action = /(d[eé]marrer|start|lancer|commencer|commencez|lire|play|lecture|begin|▶|▷)/i;
+                    const nodes = [...document.querySelectorAll('body *')];
                     const visible = nodes.map(el => {
                       const r = el.getBoundingClientRect();
                       const st = getComputedStyle(el);
                       const label = ((el.innerText || el.value || '') + ' ' +
                         (el.getAttribute('aria-label') || '') + ' ' + (el.title || '')).trim();
-                      return {el, r, label, visible: r.width > 0 && r.height > 0 &&
-                        st.display !== 'none' && st.visibility !== 'hidden' && Number(st.opacity) > 0.01};
-                    }).filter(x => x.visible && action.test(x.label));
+                      const buttonLike = el.matches('button,[role="button"],input[type=button],input[type=submit],a[role="button"]') ||
+                        typeof el.onclick === 'function' || el.hasAttribute('onclick') || st.cursor === 'pointer';
+                      const largeOverlay = r.width * r.height >= innerWidth * innerHeight * 0.2;
+                      return {el, r, label, clickable: buttonLike || largeOverlay,
+                        visible: r.width > 0 && r.height > 0 && st.display !== 'none' &&
+                          st.visibility !== 'hidden' && Number(st.opacity) > 0.01};
+                    }).filter(x => x.visible && x.clickable && action.test(x.label));
                     const chosen = visible.find(x => /(d[eé]marrer|start|lancer|commencer|lire avec|play|▶|▷)/i.test(x.label)) || visible[0];
                     return chosen ? {x: chosen.r.x + chosen.r.width/2,
                       y: chosen.r.y + chosen.r.height/2, label: chosen.label.slice(0, 100)} : null;
-                })()""".replace("__H2M_START_SELECTOR__", json.dumps(start_selector))
-                target = cdp.ev(target_js, await_promise=False)
+                })()""", await_promise=False)
                 if target:
                     # CDP pointer events produisent une activation navigateur réelle,
                     # contrairement à HTMLElement.click() pour l'audio protégé par autoplay.
@@ -255,7 +244,7 @@ def render(html_path, args):
         frame_files = []
         if is_precise:
             enc = start_encoder(out_tmp, fps, n_frames / fps, audio_inputs, err_path,
-                                quality=args.quality, loudnorm=args.loudnorm, audio_speed=speed)
+                                quality=args.quality, loudnorm=args.loudnorm)
 
         if not is_precise:
             # Référence de temps commune navigateur/FFmpeg pour aligner l'audio WebAudio.
@@ -273,7 +262,7 @@ def render(html_path, args):
             if is_precise:
                 if i >= n_frames:
                     break
-                cdp.ev(f"window.__seek({i / fps * speed:.5f})")
+                cdp.ev(f"window.__seek({i / fps:.5f})")
             else:
                 # Mode universel : on capture jusqu'à ce que le TEMPS RÉEL atteigne la durée,
                 # puis on remet les images à cadence constante (voir plus bas).
