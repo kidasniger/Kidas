@@ -52,7 +52,7 @@ def output_path(html_path, args):
     return html_path.with_name(base + ".mp4")
 
 
-def start_encoder(out_path, fps, dur, audio_inputs, err_path, quality="standard", loudnorm=False):
+def start_encoder(out_path, fps, dur, audio_inputs, err_path, quality="standard", loudnorm=False, audio_speed=1.0):
     """audio_inputs : (Path, volume[, offset]) ; offset aligne la piste sur la première image."""
     q = QUALITY[quality]
     mix_tail = ("loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.95"
@@ -74,6 +74,8 @@ def start_encoder(out_path, fps, dur, audio_inputs, err_path, quality="standard"
                 filters.extend([f"atrim=start={offset:.3f}", "asetpts=PTS-STARTPTS"])
             elif offset < -0.001:
                 filters.extend([f"adelay={int(round(-offset * 1000))}:all=1", "asetpts=PTS-STARTPTS"])
+            if abs(float(audio_speed) - 1.0) > 1e-6:
+                filters.append(f"atempo={float(audio_speed):.4f}")
             filters.extend(["aresample=48000:async=1:first_pts=0",
                             f"volume={vol}", "apad", f"atrim=duration={dur:.3f}"])
             parts.append(f"[{i + 1}:a]{','.join(filters)}[a{i}]")
