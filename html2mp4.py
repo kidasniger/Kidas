@@ -51,6 +51,7 @@ def main():
     ap.add_argument("--test", type=float, default=0, help="ne rendre que les N premières secondes")
     ap.add_argument("--duration", type=float, default=0, help="durée maximale en secondes ; 0 = durée détectée ou 60 s en mode universel")
     ap.add_argument("--click-start", action="store_true", help="active le clic automatique sur les zones de démarrage non standard (ex. #go)")
+    ap.add_argument("--speed", type=float, choices=(1.0, 1.15, 1.25, 1.5), default=1.25, help="vitesse de lecture accélérée (1.0 = normale)")
     ap.add_argument("--format", choices=("auto", "portrait", "landscape", "square"), default="auto", help="format de sortie : auto, portrait, paysage ou carré")
     ap.add_argument("--quality", choices=("fast", "standard", "high"), default="standard", help="qualité d'encodage : fast (rapide), standard ou high (lent, plus net)")
     ap.add_argument("--preview", action="store_true", help="aperçu rapide : demi-résolution, qualité fast, fichier *_apercu.mp4")
