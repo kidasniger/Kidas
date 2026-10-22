@@ -81,6 +81,8 @@ def render(html_path, args):
                 check = "(()=>!!document.querySelector('#stage')&&!!window.__video&&typeof window.__video.seek==='function'&&document.querySelectorAll('audio').length>=1)()"
             elif profile == "musicpro":
                 check = "(()=>!!document.querySelector('#st')&&typeof render==='function'&&typeof D==='number'&&typeof vP!=='undefined'&&typeof mP!=='undefined')()"
+            elif profile == "gsapvideo":
+                check = "(()=>!!document.querySelector('#st')&&!!document.querySelector('#a')&&typeof gsap!=='undefined'&&typeof tl!=='undefined'&&typeof SUB!=='undefined')()"
             else:
                 check = "(()=>!!document.querySelector('#stage')&&typeof render==='function'&&typeof IM==='object')()"
             t1 = time.time()
@@ -103,6 +105,9 @@ def render(html_path, args):
                 total = float(cdp.ev("D"))
             elif profile == "voicevideo":
                 total = float(cdp.ev("window.__video.duration"))
+            elif profile == "gsapvideo":
+                # The embedded narration is the master clock for the original GSAP timeline.
+                total = float(cdp.ev("document.querySelector('#a').duration"))
             else:
                 total = editpro_duration(text)
             dur = min(total, args.duration) if args.duration > 0 else total
