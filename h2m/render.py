@@ -346,3 +346,61 @@ def render(html_path, args):
                 if k % max(1, fps * 5) == 0 or k == n_frames - 1:
                     sys.stdout.write(f"\r  Assemblage {k + 1}/{n_frames}")
                     sys.stdout.flush()
+            print()
+
+        try:
+            enc.stdin.close()
+        except Exception:
+            pass
+        enc.wait()
+        if enc.returncode != 0 or not out_tmp.exists():
+            die("FFmpeg a échoué :\n" + err_path.read_text(errors="ignore")[-1000:])
+
+        shutil.move(str(out_tmp), str(out_final))
+        _, _, gap_ms = verify_sync(out_final, fps, n_frames / fps)
+        peak = check_audio_level(out_final, bool(audio_inputs))
+        good(f"Terminé en {fmt_time(time.monotonic() - start)} → {out_final}")
+        print_report({
+            "source": html_path.name, "output": out_final.name, "mode": mode, "label": label,
+            "width": W, "height": H, "fps": fps, "duration": n_frames / fps,
+            "quality": args.quality, "loudnorm": args.loudnorm,
+            "audio_tracks": [item[0].stem for item in audio_inputs],
+            "peak_db": peak, "sync_gap_ms": gap_ms,
+        })
+        return out_final
+    finally:
+        if cdp:
+            cdp.close()
+        if proc:
+            stop_chrome(proc)
+        if enc and enc.poll() is None:
+            try:
+                enc.kill()
+            except Exception:
+                pass
+        if wake and shutil.which("termux-wake-unlock"):
+            subprocess.call(["termux-wake-unlock"])
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _is_browser_failure(exc):
+    """Vrai pour une panne de Chromium ou de sa connexion (et non une erreur de la page)."""
+    try:
+        from websocket import WebSocketException
+    except ImportError:
+        WebSocketException = ()
+    if isinstance(exc, (OSError, WebSocketException)):
+        return True
+    return isinstance(exc, RuntimeError) and bool(
+        re.search(r"closed|crash|disconnect|Target|Inspected target", str(exc), re.I))
+
+
+def render_with_retry(html_path, args, attempts=2):
+    """Relance le rendu une fois si Chromium plante, au lieu de perdre tout le travail."""
+    for attempt in range(1, attempts + 1):
+        try:
+            return render(html_path, args)
+        except Exception as e:  # noqa: BLE001
+            if attempt == attempts or not _is_browser_failure(e):
+                raise
+            warn(f"Chromium s'est arrêté ({e}). Nouvelle tentative {attempt + 1}/{attempts}…")
