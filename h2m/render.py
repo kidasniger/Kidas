@@ -113,7 +113,8 @@ def render(html_path, args):
             dur = min(total, args.duration) if args.duration > 0 else total
             if args.test > 0:
                 dur = min(dur, args.test)
-            fps = args.fps
+            # Native browser animations run around 60 Hz; preserve that cadence for GSAP timeline videos.
+            fps = 60 if profile == "gsapvideo" else args.fps
             n_frames = max(1, int(round(dur * fps)))
             info(f"Mode synchronisé · {label} · durée {dur:.2f} s · {fps} i/s")
 
