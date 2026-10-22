@@ -21,6 +21,11 @@ on:
         description: "Durée maximale en secondes (0 = durée détectée, sinon 60 s en mode universel)"
         required: false
         default: "0"
+      click_start:
+        description: "Cliquer automatiquement sur une zone de démarrage (ex. « Lancer la vidéo »)"
+        type: boolean
+        required: false
+        default: false
       format:
         description: "Format de sortie"
         type: choice
@@ -127,9 +132,11 @@ jobs:
           NOM: ${{ inputs.nom }}
           QUALITE: ${{ inputs.qualite }}
           LOUDNORM: ${{ inputs.loudnorm }}
+          CLICK_START: ${{ inputs.click_start }}
         run: |
           EXTRA=""
           [ "$LOUDNORM" = "true" ] && EXTRA="--loudnorm"
+          [ "$CLICK_START" = "true" ] && EXTRA="$EXTRA --click-start"
           python html2mp4.py --file "$FICHIER" --fps "$FPS" --scale "$SCALE" --test "$TEST" --duration "$DURATION" --format "$FORMAT" --name "$NOM" --quality "$QUALITE" $EXTRA
 
       - name: Publier le MP4 (artefact)
