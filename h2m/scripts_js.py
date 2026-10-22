@@ -23,6 +23,43 @@ window.__finish = async () => {
 };
 
 window.__seek = async (t) => {
+  if (window.__profile === 'gsapvideo') {
+    window.__manual = true;
+    const time = Math.max(0, Number(t) || 0);
+    // Seek GSAP directly; do not depend on real-time requestAnimationFrame sampling.
+    tl.time(time, false);
+    // Scrub CSS keyframes (floating, spinning, pulsing, progress stripes) to the same timestamp.
+    for (const animation of document.getAnimations()) {
+      try { animation.pause(); animation.currentTime = time * 1000; } catch (e) {}
+    }
+    let caption = '', captionStart = 0;
+    for (const cue of SUB) {
+      if (time >= cue[0]) { captionStart = cue[0]; caption = cue[1]; }
+      else break;
+    }
+    const subtitle = document.querySelector('#sb');
+    if (subtitle) {
+      subtitle.textContent = caption;
+      if (caption) {
+        const p = Math.min(1, Math.max(0, (time - captionStart) / 0.3));
+        const eased = 1 - Math.pow(1 - p, 3);
+        subtitle.style.opacity = '1';
+        subtitle.style.transform = 'translateY(' + ((1 - eased) * 24) + 'px) scale(' + (0.96 + eased * 0.04) + ')';
+      } else {
+        subtitle.style.opacity = '0';
+        subtitle.style.transform = 'translateY(0) scale(1)';
+      }
+    }
+    const progress = document.querySelector('#pg');
+    if (progress) {
+      const total = T.length ? Number(T[T.length - 1]) : 1;
+      progress.style.width = (Math.max(0, Math.min(1, time / total)) * 1080) + 'px';
+    }
+    const overlay = document.querySelector('#go');
+    if (overlay) overlay.style.display = 'none';
+    await window.__finish();
+    return 1;
+  }
   if (window.__profile === 'editpro') {
     if (!window.__ep) {
       window.__manual = true; window.__ep = true;
