@@ -45,4 +45,5 @@ jobs:
           done
           test -n "$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 tests/fixtures/webaudio_test.mp4)"
           test -n "$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 tests/fixtures/gsap-audio-timeline_test.mp4)"
+          test "$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 tests/fixtures/gsap-audio-timeline_test.mp4)" = "60/1"
           echo "KIDAS v2, EditPro, CSS, Canvas, Web Audio et HTML statique ont produit une vidéo."
