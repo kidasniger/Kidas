@@ -49,6 +49,20 @@ def _is_voicevideo(text):
     )
 
 
+def _is_gsapvideo(text):
+    # GSAP timelines synchronized to a base64 audio track. These must be rendered frame-by-frame.
+    return (
+        bool(re.search(r"<audio\b[^>]*\bsrc=[\"']data:audio/[a-z0-9.+-]+;base64,", text, re.I))
+        and bool(re.search(r"\bconst\s+T\s*=\s*\[\s*\d", text))
+        and bool(re.search(r"\bSUB\s*=", text))
+        and bool(re.search(r"\btl\s*=\s*gsap\.timeline\(\s*\{\s*paused\s*:\s*true\s*\}\s*\)", text))
+        and bool(re.search(r"\btl\.time\(\s*t\s*,\s*false\s*\)", text))
+        and bool(re.search(r"\bstarted\s*\?\s*a\.currentTime", text))
+        and bool(re.search(r"requestAnimationFrame\s*\(\s*lp\s*\)", text))
+        and bool(re.search(r"[.#]st\s*\{[^}]*?width:\s*\d+px;\s*height:\s*\d+px", text))
+    )
+
+
 # Table des profils reconnus, testés dans l'ordre. Pour en ajouter un : écrire son test
 # _is_xxx(text), l'inscrire ici, puis prévoir son correctif dans patch_html et son audio
 # dans extract_audio / render.
@@ -57,6 +71,7 @@ PROFILES = (
     ("editpro", "EditPro (canvas + voix intégrée)", _is_editpro),
     ("musicpro", "MusicPro (canvas + voix et musique Web Audio)", _is_musicpro),
     ("voicevideo", "Vidéo React (audio intégré + window.__video)", _is_voicevideo),
+    ("gsapvideo", "Vidéo GSAP synchronisée sur la piste audio", _is_gsapvideo),
 )
 PRECISE_PROFILES = tuple(name for name, _, _ in PROFILES)
 
@@ -105,6 +120,13 @@ def patch_html(text):
         m = re.search(r"<head\b[^>]*>", text, flags=re.I)
         text = text[:m.end()] + manual + text[m.end():] if m else manual + text
         return text, "musicpro"
+    if profile == "gsapvideo":
+        # Stop the audio-driven real-time loop and let the renderer seek the GSAP timeline directly.
+        text = re.sub(r"\(function\s+lp\s*\(\)\s*\{", lambda m: m.group(0) + "if(window.__manual)return;", text, count=1)
+        manual = "<script>window.__manual=true</script>"
+        m = re.search(r"<head\b[^>]*>", text, flags=re.I)
+        text = text[:m.end()] + manual + text[m.end():] if m else manual + text
+        return text, "gsapvideo"
     return text, ""
 
 
@@ -128,7 +150,7 @@ def extract_audio(text, tmp, profile="kidas"):
             p.write_bytes(base64.b64decode(m.group(1)))
             out["voice"] = p
         return out
-    if profile == "voicevideo":
+    if profile in ("voicevideo", "gsapvideo"):
         tags = re.findall(r"<audio\b[^>]*\ssrc=[\"']data:audio/([a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)[\"']", text, re.I)
         for key, (mime, b64) in zip(("voice", "music"), tags):
             p = tmp / f"{key}.{MIME_EXT.get(mime.lower(), 'mp3')}"
