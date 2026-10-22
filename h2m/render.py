@@ -34,6 +34,7 @@ def render(html_path, args):
             die(label)
         info(f"Fichier vérifié : {label}")
         text, profile = patch_html(text)
+        speed = float(getattr(args, "speed", 1.0))
         precise_candidate = profile in PRECISE_PROFILES
         W, H = choose_frame_size(text, "auto" if precise_candidate else args.format)
         page = tmp / "page.html"
@@ -105,7 +106,7 @@ def render(html_path, args):
                 total = float(cdp.ev("window.__video.duration"))
             else:
                 total = editpro_duration(text)
-            dur = min(total, args.duration) if args.duration > 0 else total
+            dur = min(total / speed, args.duration) if args.duration > 0 else total / speed
             if args.test > 0:
                 dur = min(dur, args.test)
             fps = args.fps
@@ -154,32 +155,39 @@ def render(html_path, args):
             mode = "synchronisé"
         else:
             # Mode générique : la page n'a besoin ni de .stage, ni de D, ni d'AUD/MUS.
-            if args.duration > 0:
-                dur = args.duration
-            else:
+            try:
+                cdp.ev(
+                    f"(()=>{{const rate={speed};for(const media of document.querySelectorAll('audio,video'))"
+                    "{media.playbackRate=rate;if('preservesPitch' in media)media.preservesPitch=true;}return true})()",
+                    await_promise=False)
+            except RuntimeError:
+                warn("Impossible d'ajuster la vitesse des médias de cette page.")
+
+            try:
+                media_dur = cdp.ev("(()=>Math.max(0,...[...document.querySelectorAll('audio,video')].map(x=>x.duration).filter(x=>Number.isFinite(x)&&x>0)))()", await_promise=False)
+            except RuntimeError:
+                media_dur = 0
+            if not media_dur:
+                # Pas de <audio>/<video> : on cherche une durée déclarée par la page (const D = 48.59…).
                 try:
-                    media_dur = cdp.ev("(()=>Math.max(0,...[...document.querySelectorAll('audio,video')].map(x=>x.duration).filter(x=>Number.isFinite(x)&&x>0)))()", await_promise=False)
+                    media_dur = cdp.ev(
+                        "(()=>{for(const n of ['D','DUR','DURATION','TOTAL','TOTAL_DURATION','VIDEO_DURATION']){"
+                        "try{const v=(0,eval)(n);if(typeof v==='number'&&isFinite(v)&&v>=2&&v<=900)return v}catch(e){}}return 0})()",
+                        await_promise=False)
                 except RuntimeError:
                     media_dur = 0
-                if not media_dur:
-                    # Pas de <audio>/<video> : on cherche une durée déclarée par la page (const D = 48.59…).
-                    try:
-                        media_dur = cdp.ev(
-                            "(()=>{for(const n of ['D','DUR','DURATION','TOTAL','TOTAL_DURATION','VIDEO_DURATION']){"
-                            "try{const v=(0,eval)(n);if(typeof v==='number'&&isFinite(v)&&v>=2&&v<=900)return v}catch(e){}}return 0})()",
-                            await_promise=False)
-                    except RuntimeError:
-                        media_dur = 0
-                    if media_dur:
-                        info(f"Durée déclarée par la page : {float(media_dur):.2f} s.")
-                    else:
-                        warn("Durée de la page non détectée : 60 s par défaut. Utilise --duration N pour la fixer.")
-                dur = float(media_dur or 60.0)
+                if media_dur:
+                    info(f"Durée déclarée par la page : {float(media_dur):.2f} s.")
+                else:
+                    warn("Durée de la page non détectée : 60 s par défaut. Utilise --duration N pour la fixer.")
+            dur = float(media_dur or 60.0) / speed
+            if args.duration > 0:
+                dur = min(dur, args.duration)
             if args.test > 0:
                 dur = min(dur, args.test)
             fps = args.fps
             n_frames = max(1, int(round(dur * fps)))
-            info(f"Mode universel · durée {dur:.2f} s · {fps} i/s · capture de la fenêtre")
+            info(f"Mode universel · durée {dur:.2f} s · vitesse {speed:g}× · {fps} i/s · capture de la fenêtre")
             clip = {"x": 0, "y": 0, "width": W, "height": H, "scale": args.scale}
             audio_inputs = []
             mode = "universel"
@@ -246,7 +254,7 @@ def render(html_path, args):
         frame_files = []
         if is_precise:
             enc = start_encoder(out_tmp, fps, n_frames / fps, audio_inputs, err_path,
-                                quality=args.quality, loudnorm=args.loudnorm)
+                                quality=args.quality, loudnorm=args.loudnorm, audio_speed=speed)
 
         if not is_precise:
             # Référence de temps commune navigateur/FFmpeg pour aligner l'audio WebAudio.
@@ -264,7 +272,7 @@ def render(html_path, args):
             if is_precise:
                 if i >= n_frames:
                     break
-                cdp.ev(f"window.__seek({i / fps:.5f})")
+                cdp.ev(f"window.__seek({i / fps * speed:.5f})")
             else:
                 # Mode universel : on capture jusqu'à ce que le TEMPS RÉEL atteigne la durée,
                 # puis on remet les images à cadence constante (voir plus bas).
@@ -338,61 +346,3 @@ def render(html_path, args):
                 if k % max(1, fps * 5) == 0 or k == n_frames - 1:
                     sys.stdout.write(f"\r  Assemblage {k + 1}/{n_frames}")
                     sys.stdout.flush()
-            print()
-
-        try:
-            enc.stdin.close()
-        except Exception:
-            pass
-        enc.wait()
-        if enc.returncode != 0 or not out_tmp.exists():
-            die("FFmpeg a échoué :\n" + err_path.read_text(errors="ignore")[-1000:])
-
-        shutil.move(str(out_tmp), str(out_final))
-        _, _, gap_ms = verify_sync(out_final, fps, n_frames / fps)
-        peak = check_audio_level(out_final, bool(audio_inputs))
-        good(f"Terminé en {fmt_time(time.monotonic() - start)} → {out_final}")
-        print_report({
-            "source": html_path.name, "output": out_final.name, "mode": mode, "label": label,
-            "width": W, "height": H, "fps": fps, "duration": n_frames / fps,
-            "quality": args.quality, "loudnorm": args.loudnorm,
-            "audio_tracks": [item[0].stem for item in audio_inputs],
-            "peak_db": peak, "sync_gap_ms": gap_ms,
-        })
-        return out_final
-    finally:
-        if cdp:
-            cdp.close()
-        if proc:
-            stop_chrome(proc)
-        if enc and enc.poll() is None:
-            try:
-                enc.kill()
-            except Exception:
-                pass
-        if wake and shutil.which("termux-wake-unlock"):
-            subprocess.call(["termux-wake-unlock"])
-        shutil.rmtree(tmp, ignore_errors=True)
-
-
-def _is_browser_failure(exc):
-    """Vrai pour une panne de Chromium ou de sa connexion (et non une erreur de la page)."""
-    try:
-        from websocket import WebSocketException
-    except ImportError:
-        WebSocketException = ()
-    if isinstance(exc, (OSError, WebSocketException)):
-        return True
-    return isinstance(exc, RuntimeError) and bool(
-        re.search(r"closed|crash|disconnect|Target|Inspected target", str(exc), re.I))
-
-
-def render_with_retry(html_path, args, attempts=2):
-    """Relance le rendu une fois si Chromium plante, au lieu de perdre tout le travail."""
-    for attempt in range(1, attempts + 1):
-        try:
-            return render(html_path, args)
-        except Exception as e:  # noqa: BLE001
-            if attempt == attempts or not _is_browser_failure(e):
-                raise
-            warn(f"Chromium s'est arrêté ({e}). Nouvelle tentative {attempt + 1}/{attempts}…")
