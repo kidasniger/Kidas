@@ -26,6 +26,16 @@ on:
         type: boolean
         required: false
         default: false
+      speed:
+        description: "Vitesse de lecture (1.0 = normale)"
+        type: choice
+        options:
+          - "1.0"
+          - "1.15"
+          - "1.25"
+          - "1.5"
+        required: false
+        default: "1.25"
       format:
         description: "Format de sortie"
         type: choice
@@ -133,11 +143,12 @@ jobs:
           QUALITE: ${{ inputs.qualite }}
           LOUDNORM: ${{ inputs.loudnorm }}
           CLICK_START: ${{ inputs.click_start }}
+          SPEED: ${{ inputs.speed }}
         run: |
           EXTRA=""
           [ "$LOUDNORM" = "true" ] && EXTRA="--loudnorm"
           [ "$CLICK_START" = "true" ] && EXTRA="$EXTRA --click-start"
-          python html2mp4.py --file "$FICHIER" --fps "$FPS" --scale "$SCALE" --test "$TEST" --duration "$DURATION" --format "$FORMAT" --name "$NOM" --quality "$QUALITE" $EXTRA
+          python html2mp4.py --file "$FICHIER" --fps "$FPS" --scale "$SCALE" --test "$TEST" --duration "$DURATION" --format "$FORMAT" --name "$NOM" --quality "$QUALITE" --speed "$SPEED" $EXTRA
 
       - name: Publier le MP4 (artefact)
         uses: actions/upload-artifact@v4
