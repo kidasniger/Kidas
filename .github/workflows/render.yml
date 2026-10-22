@@ -80,7 +80,7 @@ jobs:
             [[ "$BLOB_ID" =~ ^v[a-z0-9]{12,40}$ ]] || { echo "::error::Identifiant temporaire invalide."; exit 1; }
             : "${ACTIONS_ID_TOKEN_REQUEST_URL:?GitHub OIDC indisponible; vérifie id-token: write}"
             : "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:?GitHub OIDC indisponible; vérifie id-token: write}"
-            OIDC_REQUEST_URL="${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https%3A%2F%2Fkidas-xi.vercel.app%2Fkidas-render"
+            OIDC_REQUEST_URL="${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https%3A%2F%2Frendrax.vercel.app%2Fkidas-render"
             OIDC_TOKEN="$(curl --fail --silent --show-error \
               -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
               "$OIDC_REQUEST_URL" | jq -er '.value')"
@@ -88,7 +88,7 @@ jobs:
             mkdir -p kidas-tmp
             curl --fail --silent --show-error --location --retry 2 \
               -H "Authorization: Bearer ${OIDC_TOKEN}" \
-              "https://kidas-xi.vercel.app/api/runner-source?id=${BLOB_ID}&run_id=${GITHUB_RUN_ID}" \
+              "https://rendrax.vercel.app/api/runner-source?id=${BLOB_ID}&run_id=${GITHUB_RUN_ID}" \
               --output kidas-tmp/input.html
             test -s kidas-tmp/input.html || { echo "::error::Le HTML temporaire est vide."; exit 1; }
             echo "fichier=kidas-tmp/input.html" >> "$GITHUB_OUTPUT"
@@ -159,7 +159,7 @@ jobs:
               echo "::warning::OIDC indisponible; le HTML privé doit être supprimé depuis le stockage Vercel."
               exit 0
             fi
-            OIDC_REQUEST_URL="${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https%3A%2F%2Fkidas-xi.vercel.app%2Fkidas-render"
+            OIDC_REQUEST_URL="${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=https%3A%2F%2Frendrax.vercel.app%2Fkidas-render"
             if ! OIDC_TOKEN="$(curl --fail --silent --show-error \
               -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
               "$OIDC_REQUEST_URL" | jq -er '.value')"; then
@@ -168,7 +168,7 @@ jobs:
             fi
             echo "::add-mask::${OIDC_TOKEN}"
             curl --fail --silent --show-error --location --retry 2 \
-              -X POST "https://kidas-xi.vercel.app/api/cleanup" \
+              -X POST "https://rendrax.vercel.app/api/cleanup" \
               -H "Authorization: Bearer ${OIDC_TOKEN}" \
               -H "Content-Type: application/json" \
               --data "{\"id\":\"${BLOB_ID}\",\"run_id\":\"${GITHUB_RUN_ID}\"}" \

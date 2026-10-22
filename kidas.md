@@ -22,7 +22,7 @@ technologies:
   - "Cloudflare Turnstile"
 featured: false
 github: "https://github.com/kidasniger/Kidas"
-demo: "https://kidas-xi.vercel.app"
+demo: "https://rendrax.vercel.app"
 website: "À renseigner"
 documentation: "À renseigner"
 download: "À renseigner"
@@ -108,7 +108,7 @@ RENDRAX convertit des animations HTML en vidéos MP4 à l’aide d’un rendu c�
 # Liens
 
 - GitHub: "https://github.com/kidasniger/Kidas"
-- Démo: "https://kidas-xi.vercel.app"
+- Démo: "https://rendrax.vercel.app"
 - Site web: "À renseigner"
 - Documentation: "À renseigner"
 - Téléchargement: "À renseigner"
