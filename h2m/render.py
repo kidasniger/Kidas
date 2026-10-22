@@ -158,7 +158,8 @@ def render(html_path, args):
             try:
                 cdp.ev(
                     f"(()=>{{const rate={speed};for(const media of document.querySelectorAll('audio,video'))"
-                    "{media.playbackRate=rate;if('preservesPitch' in media)media.preservesPitch=true;}return true})()",
+                    "{media.playbackRate=rate;if('preservesPitch' in media)media.preservesPitch=true;}"
+                    "for(const animation of document.getAnimations()){try{animation.playbackRate=rate}catch(e){}}return true})()",
                     await_promise=False)
             except RuntimeError:
                 warn("Impossible d'ajuster la vitesse des médias de cette page.")
