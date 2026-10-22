@@ -31,13 +31,15 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Rendus de régression HTML/CSS/Canvas/Web Audio
         run: |
-          set -e
+          set -euo pipefail
           python html2mp4.py --file kidas.html --fps 10 --scale 0.5 --test 2 --duration 2 --format auto
           python html2mp4.py --file uploads/vmv7j3erf.html --fps 10 --scale 0.5 --test 2 --duration 2 --format portrait
           for file in tests/fixtures/css-animation.html tests/fixtures/canvas-animation.html tests/fixtures/webaudio.html tests/fixtures/static.html tests/fixtures/start-button.html; do
             python html2mp4.py --file "$file" --fps 10 --scale 0.5 --test 2 --duration 2 --format landscape
           done
-          for file in kidas_test.mp4 uploads/vmv7j3erf_test.mp4 tests/fixtures/css-animation_test.mp4 tests/fixtures/canvas-animation_test.mp4 tests/fixtures/webaudio_test.mp4 tests/fixtures/static_test.mp4 tests/fixtures/start-button_test.mp4; do
+          python html2mp4.py --file tests/fixtures/start-overlay.html --fps 10 --scale 0.5 --test 2 --duration 2 --format landscape --click-start 2>&1 | tee /tmp/rendrax-start-overlay.log
+          grep -q "Bouton de démarrage activé automatiquement" /tmp/rendrax-start-overlay.log
+          for file in kidas_test.mp4 uploads/vmv7j3erf_test.mp4 tests/fixtures/css-animation_test.mp4 tests/fixtures/canvas-animation_test.mp4 tests/fixtures/webaudio_test.mp4 tests/fixtures/static_test.mp4 tests/fixtures/start-button_test.mp4 tests/fixtures/start-overlay_test.mp4; do
             test -s "$file"
             ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height -of csv=p=0 "$file"
           done
