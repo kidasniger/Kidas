@@ -187,10 +187,13 @@ def render(html_path, args):
             # Certaines animations (dont EditPro – Vidéo 60 s) restent immobiles
             # tant que leur bouton de démarrage n'a pas reçu une vraie action pointeur.
             try:
-                target = cdp.ev(r"""(() => {
-                    const nodes = [...document.querySelectorAll(
-                      'button,[role=' + '"button"' + '],input[type=button],input[type=submit],a[role=' + '"button"' + ']'
-                    )];
+                start_selector = (
+                    'button,[role="button"],input[type=button],input[type=submit],a[role="button"]'
+                )
+                if getattr(args, "click_start", False):
+                    start_selector += ',#go,[data-start-button],[data-action="start"]'
+                target_js = r"""(() => {
+                    const nodes = [...document.querySelectorAll(__H2M_START_SELECTOR__)];
                     const action = /(d[eé]marrer|start|lancer|commencer|commencez|lire|play|lecture|begin|▶|▷)/i;
                     const visible = nodes.map(el => {
                       const r = el.getBoundingClientRect();
@@ -203,7 +206,8 @@ def render(html_path, args):
                     const chosen = visible.find(x => /(d[eé]marrer|start|lancer|commencer|lire avec|play|▶|▷)/i.test(x.label)) || visible[0];
                     return chosen ? {x: chosen.r.x + chosen.r.width/2,
                       y: chosen.r.y + chosen.r.height/2, label: chosen.label.slice(0, 100)} : null;
-                })()""", await_promise=False)
+                })()""".replace("__H2M_START_SELECTOR__", json.dumps(start_selector))
+                target = cdp.ev(target_js, await_promise=False)
                 if target:
                     # CDP pointer events produisent une activation navigateur réelle,
                     # contrairement à HTMLElement.click() pour l'audio protégé par autoplay.
