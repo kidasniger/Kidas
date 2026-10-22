@@ -52,6 +52,7 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertTrue((fixtures / "webaudio.html").is_file())
         self.assertTrue((fixtures / "static.html").is_file())
         self.assertTrue((fixtures / "start-button.html").is_file())
+        self.assertTrue((fixtures / "gsap-audio-timeline.html").is_file())
 
     # --- vérification automatique du fichier ---
     EDITPRO = ('<html><body><div id="stage"></div><script>const IM={"voice":"' + "QUJD" * 400 + '"};'
@@ -96,6 +97,28 @@ class Html2Mp4Tests(unittest.TestCase):
                 "function render(t){} function music(){} function go(){ac.resume()} "
                 "(function lp(){render(0);requestAnimationFrame(lp)})();"
                 "const b=atob(VOICE);</script></body></html>")
+
+    GSAPVIDEO = ('<html><head><style>#st{width:1080px;height:1920px}</style></head><body><div id="st"></div>'
+                 '<audio id="a" src="data:audio/wav;base64,QUJD"></audio><script>'
+                 'const T=[0,1],SUB=[[0,"start"]],tl=gsap.timeline({paused:true});'
+                 'let started=0;(function lp(){const t=started?a.currentTime:1.6;tl.time(t,false);requestAnimationFrame(lp)})();'
+                 '</script></body></html>')
+
+    def test_gsap_audio_timeline_pattern_is_recognised(self):
+        self.assertEqual(renderer.detect_profile(self.GSAPVIDEO)[0], "gsapvideo")
+        self.assertIn("gsapvideo", renderer.PRECISE_PROFILES)
+
+    def test_gsap_audio_timeline_patch_stops_real_time_loop(self):
+        patched, profile = renderer.patch_html(self.GSAPVIDEO)
+        self.assertEqual(profile, "gsapvideo")
+        self.assertLess(patched.index("window.__manual=true"), patched.index("const T=[0,1]"))
+        self.assertIn("(function lp(){if(window.__manual)return;", patched)
+
+    def test_gsap_audio_timeline_audio_is_extracted(self):
+        with tempfile.TemporaryDirectory() as d:
+            audio = renderer.extract_audio(self.GSAPVIDEO, Path(d), "gsapvideo")
+            self.assertTrue(audio["voice"].is_file())
+            self.assertEqual(audio["voice"].read_bytes(), base64.b64decode("QUJD"))
 
     def test_musicpro_pattern_is_recognised(self):
         self.assertEqual(renderer.detect_profile(self.MUSICPRO)[0], "musicpro")
