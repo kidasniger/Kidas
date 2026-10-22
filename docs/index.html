@@ -52,11 +52,6 @@ h2{font-size:1.02rem;margin:0;font-weight:700;letter-spacing:-.01em}
 /* formulaires */
 label{display:block;font-weight:600;margin:0 0 6px;font-size:.82rem;color:var(--mut)}
 .field{display:flex;flex-direction:column;min-width:0}
-.start-option{display:flex;align-items:flex-start;gap:12px;margin:14px 0 0;padding:13px 14px;border:1px solid var(--bd);border-radius:var(--rs);background:var(--surf2);color:var(--tx);font-size:.92rem;line-height:1.4;cursor:pointer}
-.start-option input[type=checkbox]{flex:0 0 20px;width:20px;height:20px;margin:2px 0 0;accent-color:var(--ac);cursor:pointer}
-.start-option .start-option-copy{display:flex;flex:1;flex-direction:column;gap:4px;min-width:0}
-.start-option .start-option-copy strong{font-size:.9rem;font-weight:700}
-.start-option .start-option-copy small{font-size:.8rem;font-weight:400;color:var(--mut)}
 select{width:100%;min-height:46px;padding:10px 12px;border:1px solid var(--bd);border-radius:var(--rs);background-color:var(--surf2);color:var(--tx);font:inherit;font-size:.95rem}
 select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;text-overflow:ellipsis;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
@@ -277,24 +272,8 @@ ul#list button{box-shadow:none}
           <option value="300">5 minutes</option>
         </select>
       </div>
-      <div class="field">
-        <label for="speed">Vitesse de lecture</label>
-        <select id="speed">
-          <option value="1.0">Normale · 1×</option>
-          <option value="1.15">Accélérée · 1,15×</option>
-          <option value="1.25" selected>Plus rapide · 1,25×</option>
-          <option value="1.5">Très rapide · 1,5×</option>
-        </select>
-        <small>Le rythme visuel et le son sont accélérés ensemble.</small>
-      </div>
     </div>
-    <label class="start-option" for="clickStart">
-      <input id="clickStart" type="checkbox" value="true" aria-describedby="clickStartHelp">
-      <span class="start-option-copy">
-        <strong>Démarrer automatiquement la vidéo</strong>
-        <small id="clickStartHelp">À activer si le HTML affiche un écran « Lancer la vidéo » ou un bouton ▶ avant l’animation.</small>
-      </span>
-    </label>
+    <p class="mut" role="note">RENDRAX détecte automatiquement l’écran de démarrage du HTML et active le bouton « Lancer la vidéo » lorsqu’il est présent.</p>
     <p id="securityStatus" role="status" class="mut" aria-live="polite" hidden></p>
     <div id="captchaMount" aria-hidden="true"></div>
     <button id="go" class="go" type="button"><span class="dot" aria-hidden="true"></span>Générer MP4</button>
@@ -646,7 +625,7 @@ async function go() {
     if (cancelled) { const e = new Error('annulé'); e.cancelled = true; throw e; }
     await api('/render', { method: 'POST', body: {
       id, captchaToken: renderCaptcha, fps: $('#fps').value, scale: m.scale, test: m.test,
-      duration: $('#duration').value, clickStart: $('#clickStart').checked, speed: $('#speed').value, format: $('#format').value, name: f.name.replace(/\.html?$/i, '')
+      duration: $('#duration').value, format: $('#format').value, name: f.name.replace(/\.html?$/i, '')
     }});
     dispatchAccepted = true;
     store.set('kidas_job', JSON.stringify({ id, t0 }));
