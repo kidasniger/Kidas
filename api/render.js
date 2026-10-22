@@ -5,14 +5,13 @@ const MAX_BYTES = 50 * 1000 * 1000;
 const FORMATS = new Set(['auto', 'portrait', 'landscape', 'square']);
 const FPS = new Set(['15', '24', '30']);
 const DURATIONS = new Set(['0', '10', '30', '60', '120', '300']);
-const SPEEDS = new Set(['1.0', '1.15', '1.25', '1.5']);
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return send(res, 405, { error: 'Méthode non autorisée.' });
   if (!sameOrigin(req)) return send(res, 403, { error: 'Origine de la demande refusée.' });
-  const { id, captchaToken, fps, scale, test, duration, format, name, clickStart = false, speed = '1.25' } = readBody(req);
+  const { id, captchaToken, fps, scale, test, duration, format, name } = readBody(req);
   if (!validJobId(id)) return send(res, 400, { error: 'Identifiant temporaire invalide.' });
-  if (typeof clickStart !== 'boolean' || !SPEEDS.has(String(speed)) || !FPS.has(String(fps)) || !['0.5', '1'].includes(String(scale)) ||
+  if (!FPS.has(String(fps)) || !['0.5', '1'].includes(String(scale)) ||
       !['0', '10'].includes(String(test)) || !DURATIONS.has(String(duration)) || !FORMATS.has(String(format))) {
     return send(res, 400, { error: 'Réglages de conversion invalides.' });
   }
@@ -44,8 +43,6 @@ export default async function handler(req, res) {
       nom: safeName(name),
       qualite: 'standard',
       loudnorm: false,
-      click_start: String(clickStart),
-      speed: String(speed),
       tag: id
     };
     stage = 'déclenchement du workflow GitHub Actions';
