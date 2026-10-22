@@ -64,7 +64,7 @@ permissions:
 
 jobs:
   render:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -111,10 +111,23 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Installer FFmpeg et les dépendances
+      - name: Installer FFmpeg
+        timeout-minutes: 8
         run: |
-          command -v ffmpeg >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; }
-          pip install -q websocket-client
+          if command -v ffmpeg >/dev/null 2>&1; then
+            ffmpeg -version | head -n 1
+          else
+            echo "Mise à jour des index APT..."
+            sudo timeout 240s apt-get update -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
+            echo "Installation de FFmpeg..."
+            sudo timeout 240s apt-get install -y ffmpeg
+          fi
+
+      - name: Installer websocket-client
+        timeout-minutes: 3
+        run: |
+          python -m pip install --disable-pip-version-check --no-input --retries 2 --timeout 20 websocket-client
+          python -c "import websocket; print('websocket-client installé:', websocket.__version__)"
 
       - name: Rendre la vidéo
         env:
