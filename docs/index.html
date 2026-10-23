@@ -605,7 +605,7 @@ async function loadList() {
   }
 }
 async function waitJob(id, t0) {
-  let polls = 0;
+  let polls = 0, lastWorkflowStep = '';
   while (Date.now() - t0 < 95 * 60000) {
     if (cancelled) { const e = new Error('annulé'); e.cancelled = true; throw e; }
     await sleep(6000);
@@ -618,10 +618,11 @@ async function waitJob(id, t0) {
       continue;
     }
     currentRunId = job.runId || currentRunId;
+    if (job.currentStep) lastWorkflowStep = job.currentStep;
     if (job.status !== 'completed') {
-      if (job.currentStep) {
-        setSteps(workflowStepIndex(job.currentStep));
-        status(workflowStepLabel(job.currentStep) + ' (' + elapsed + ')', null, job.html_url);
+      if (lastWorkflowStep) {
+        setSteps(workflowStepIndex(lastWorkflowStep));
+        status(workflowStepLabel(lastWorkflowStep) + ' (' + elapsed + ')', null, job.html_url);
       } else {
         setSteps(job.status === 'queued' ? 1 : 2);
         status((job.status === 'queued' ? 'En file d’attente… ' : 'Rendu en cours… ') + '(' + elapsed + ')', null, job.html_url);
@@ -630,7 +631,8 @@ async function waitJob(id, t0) {
       continue;
     }
     if (job.conclusion !== 'success') {
-      const where = job.currentStep ? workflowStepLabel(job.currentStep).replace(/…$/, '') : '';
+      const failedStep = job.currentStep || lastWorkflowStep;
+      const where = failedStep ? workflowStepLabel(failedStep).replace(/…$/, '') : '';
       const e = new Error(where ? 'Échec : ' + where + '. Consulte le journal pour le détail.' : 'Le rendu a échoué. Consulte le journal pour connaître la cause.');
       e.url = job.html_url; throw e;
     }
