@@ -185,7 +185,7 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertEqual(validate_watermark(), ("RENDRAX", "pulse", "bottom-right", 0.45, 0.07))
         filt = watermark_filter("RENDRAX", "pulse", "bottom-right", 0.45, 0.07)
         self.assertIn("sin(2*PI*t/2)", filt)
-        self.assertIn("text='RENDRAX'", filt)
+        self.assertIn("text='◆  RENDRAX'", filt)
         self.assertIn("alpha=", filt)
 
     def test_watermark_rejects_invalid_settings(self):
