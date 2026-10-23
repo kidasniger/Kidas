@@ -33,6 +33,26 @@ export default async function handler(req, res) {
       html_url: run.html_url,
       release: null
     };
+    if (req.query?.details === '1' || (run.status === 'completed' && run.conclusion !== 'success')) {
+      try {
+        const response = await githubRequest(`/repos/kidasniger/Kidas/actions/runs/${run.id}/jobs?per_page=20`);
+        const jobs = Array.isArray(response.data?.jobs) ? response.data.jobs : [];
+        const activeJob = jobs.find(item => item.status === 'in_progress') ||
+          jobs.find(item => item.conclusion === 'failure') || jobs[0];
+        if (activeJob && Array.isArray(activeJob.steps)) {
+          const step = activeJob.steps.find(item => item.status === 'in_progress') ||
+            activeJob.steps.find(item => item.conclusion === 'failure') ||
+            (run.status === 'completed' ? activeJob.steps.find(item => item.conclusion === 'cancelled') : null);
+          if (step) {
+            result.currentStep = step.name;
+            result.currentStepStatus = step.status;
+            result.stepConclusion = step.conclusion;
+          }
+        }
+      } catch (detailsError) {
+        console.warn('[Kidas job details]', detailsError?.status || detailsError?.name || 'error');
+      }
+    }
     if (run.status === 'completed' && run.conclusion === 'success') {
       try {
         const release = await githubRequest(`/repos/kidasniger/Kidas/releases/tags/${encodeURIComponent(id)}`);
