@@ -302,7 +302,7 @@ def render(html_path, args):
                 if time.monotonic() - start >= dur:
                     break
                 frame_ts.append(time.monotonic() - start)
-            shot = cdp.call("Page.captureScreenshot", format="jpeg", quality=QUALITY[args.quality]["jpeg"], clip=clip)
+            shot = cdp.call("Page.captureScreenshot", format="jpeg", quality=QUALITY[selected_quality]["jpeg"], clip=clip)
             jpeg = base64.b64decode(shot["data"])
             if is_precise:
                 try:
