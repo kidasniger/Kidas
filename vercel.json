@@ -3,5 +3,11 @@
   "framework": null,
   "buildCommand": "",
   "installCommand": "npm install",
-  "outputDirectory": "docs"
+  "outputDirectory": "docs",
+  "crons": [
+    {
+      "path": "/api/cleanup-stale",
+      "schedule": "17 3 * * *"
+    }
+  ]
 }
