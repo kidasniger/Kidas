@@ -9,6 +9,7 @@ from pathlib import Path
 
 from h2m.profiles import PRECISE_PROFILES
 from h2m.render import select_fps, select_quality
+from h2m.scripts_js import JS_HELPERS
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("html2mp4", ROOT / "html2mp4.py")
@@ -58,6 +59,7 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertTrue((fixtures / "static.html").is_file())
         self.assertTrue((fixtures / "start-button.html").is_file())
         self.assertTrue((fixtures / "gsap-audio-timeline.html").is_file())
+        self.assertTrue((fixtures / "gsap-duration-audio-timeline.html").is_file())
 
     # --- vérification automatique du fichier ---
     EDITPRO = ('<html><body><div id="stage"></div><script>const IM={"voice":"' + "QUJD" * 400 + '"};'
@@ -130,6 +132,12 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertEqual(profile, "gsapvideo")
         self.assertLess(patched.index("window.__manual=true"), patched.index("const D=51.88"))
         self.assertIn("(function lp(){if(window.__manual)return;", patched)
+
+    def test_gsap_seek_supports_D_duration_without_T(self):
+        # Prevent regression: some GSAP templates expose D and AN but no global T.
+        self.assertIn("typeof T !== 'undefined'", JS_HELPERS)
+        self.assertIn("typeof D !== 'undefined'", JS_HELPERS)
+        self.assertIn("document.querySelector('#a')", JS_HELPERS)
 
     def test_gsap_audio_timeline_patch_stops_real_time_loop(self):
         patched, profile = renderer.patch_html(self.GSAPVIDEO)
