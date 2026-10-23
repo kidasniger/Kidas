@@ -446,12 +446,13 @@ function hint(msg) { const h = $('#hint'); h.hidden = !msg; h.textContent = msg 
 function workflowStepIndex(name) {
   if (/Publier le MP4|Supprimer les fichiers temporaires/i.test(name || '')) return 3;
   if (/Rendre la vidéo/i.test(name || '')) return 2;
-  if (/Préparer le HTML source|Installer FFmpeg|Installer websocket-client|Set up job|actions\/checkout|setup-python/i.test(name || '')) return 1;
+  if (/Préparer le HTML source|Installer FFmpeg|Vérifier les outils média|Installer websocket-client|Set up job|actions\/checkout|setup-python/i.test(name || '')) return 1;
   return 2;
 }
 function workflowStepLabel(name) {
   if (/Préparer le HTML source/i.test(name || '')) return 'Préparation du HTML temporaire…';
   if (/Installer FFmpeg/i.test(name || '')) return 'Préparation du moteur vidéo…';
+  if (/Vérifier les outils média/i.test(name || '')) return 'Vérification des outils de rendu…';
   if (/Installer websocket-client/i.test(name || '')) return 'Préparation des dépendances…';
   if (/Rendre la vidéo/i.test(name || '')) return 'Génération des images et synchronisation audio…';
   if (/Publier le MP4 \(artefact\)/i.test(name || '')) return 'Finalisation et vérification du MP4…';
