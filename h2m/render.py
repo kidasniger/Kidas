@@ -20,6 +20,25 @@ from h2m.scripts_js import JS_HELPERS
 from h2m.ui import die, fmt_time, good, info, warn
 
 
+def select_fps(profile, requested="auto"):
+    """Use 60 fps for seekable/synchronized profiles and 30 for generic HTML."""
+    if requested is None or str(requested).lower() == "auto":
+        return 60 if profile in PRECISE_PROFILES else 30
+    fps = int(requested)
+    if not 1 <= fps <= 120:
+        raise ValueError("La fréquence d’images doit être comprise entre 1 et 120 i/s.")
+    return fps
+
+
+def select_quality(requested="auto", scale=1.0, test=0, preview=False):
+    """Use faster encoding for previews/reduced exports and standard otherwise."""
+    if requested and requested != "auto":
+        return requested
+    if preview or float(test or 0) > 0 or float(scale or 1.0) < 1.0:
+        return "fast"
+    return "standard"
+
+
 def render(html_path, args):
     tmp = Path(tempfile.mkdtemp(prefix="html2mp4_"))
     chrome = proc = cdp = enc = None
@@ -32,7 +51,12 @@ def render(html_path, args):
         profile, label = detect_profile(text)
         if profile == "invalid":
             die(label)
+        selected_quality = select_quality(
+            getattr(args, "quality", "auto"), getattr(args, "scale", 1.0),
+            getattr(args, "test", 0), getattr(args, "preview", False)
+        )
         info(f"Fichier vérifié : {label}")
+        info(f"Qualité d’encodage automatique : {selected_quality}.")
         text, profile = patch_html(text)
         precise_candidate = profile in PRECISE_PROFILES
         W, H = choose_frame_size(text, "auto" if precise_candidate else args.format)
@@ -114,7 +138,7 @@ def render(html_path, args):
             if args.test > 0:
                 dur = min(dur, args.test)
             # Native browser animations run around 60 Hz; preserve that cadence for GSAP timeline videos.
-            fps = 60 if profile == "gsapvideo" else args.fps
+            fps = select_fps(profile, getattr(args, "fps", "auto"))
             n_frames = max(1, int(round(dur * fps)))
             info(f"Mode synchronisé · {label} · durée {dur:.2f} s · {fps} i/s")
 
@@ -150,7 +174,7 @@ def render(html_path, args):
                     else:
                         warn(f"Piste {label_fr} introuvable ou non décodée par le navigateur.")
             if not audio_inputs:
-                warn("Aucune piste audio trouvée dans ce fichier : la vidéo sera muette.")
+                die("Aucune piste audio valide n’a été récupérée pour ce profil synchronisé. Le MP4 muet a été bloqué.")
 
             cdp.ev("window.__seek(0)")
             r = cdp.ev("(()=>{const r=document.querySelector('.stage,#stage,#st').getBoundingClientRect();return [r.x,r.y,r.width,r.height]})()")
@@ -183,7 +207,7 @@ def render(html_path, args):
                 dur = float(media_dur or 60.0)
             if args.test > 0:
                 dur = min(dur, args.test)
-            fps = args.fps
+            fps = select_fps(profile, getattr(args, "fps", "auto"))
             n_frames = max(1, int(round(dur * fps)))
             info(f"Mode universel · durée {dur:.2f} s · {fps} i/s · capture de la fenêtre")
             clip = {"x": 0, "y": 0, "width": W, "height": H, "scale": args.scale}
@@ -250,7 +274,7 @@ def render(html_path, args):
         frame_files = []
         if is_precise:
             enc = start_encoder(out_tmp, fps, n_frames / fps, audio_inputs, err_path,
-                                quality=args.quality, loudnorm=args.loudnorm)
+                                quality=selected_quality, loudnorm=args.loudnorm)
 
         if not is_precise:
             # Référence de temps commune navigateur/FFmpeg pour aligner l'audio WebAudio.
@@ -324,7 +348,7 @@ def render(html_path, args):
         if not is_precise:
             info("Assemblage des images et de l'audio…")
             enc = start_encoder(out_tmp, fps, n_frames / fps, audio_inputs, err_path,
-                                quality=args.quality, loudnorm=args.loudnorm)
+                                quality=selected_quality, loudnorm=args.loudnorm)
             # Remise à cadence constante : pour chaque instant k/fps on écrit la dernière image
             # réellement capturée avant cet instant. Image et audio restent ainsi sur la même horloge.
             j = 0
@@ -353,13 +377,18 @@ def render(html_path, args):
             die("FFmpeg a échoué :\n" + err_path.read_text(errors="ignore")[-1000:])
 
         shutil.move(str(out_tmp), str(out_final))
-        _, _, gap_ms = verify_sync(out_final, fps, n_frames / fps)
+        video_duration, audio_duration, gap_ms = verify_sync(out_final, fps, n_frames / fps)
+        if is_precise and audio_inputs:
+            if video_duration is None or audio_duration is None:
+                die("Le MP4 final n’expose pas une piste audio/vidéo vérifiable.")
+            if gap_ms is not None and gap_ms > max(80.0, 2500.0 / fps):
+                die(f"Écart audio/vidéo trop grand ({gap_ms:.0f} ms) : MP4 non validé.")
         peak = check_audio_level(out_final, bool(audio_inputs))
         good(f"Terminé en {fmt_time(time.monotonic() - start)} → {out_final}")
         print_report({
             "source": html_path.name, "output": out_final.name, "mode": mode, "label": label,
             "width": W, "height": H, "fps": fps, "duration": n_frames / fps,
-            "quality": args.quality, "loudnorm": args.loudnorm,
+            "quality": selected_quality, "loudnorm": args.loudnorm,
             "audio_tracks": [item[0].stem for item in audio_inputs],
             "peak_db": peak, "sync_gap_ms": gap_ms,
         })
