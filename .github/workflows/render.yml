@@ -8,9 +8,6 @@ on:
         description: "Fichier HTML à convertir"
         required: true
         default: "kidas.html"
-      fps:
-        description: "Images par seconde"
-        default: "30"
       scale:
         description: "Échelle (1 = 1080x1920, 0.5 = 540x960)"
         default: "1"
@@ -35,20 +32,6 @@ on:
         description: "Nom du MP4 (défaut : nom du fichier HTML)"
         required: false
         default: ""
-      qualite:
-        description: "Qualité d'encodage"
-        type: choice
-        options:
-          - standard
-          - fast
-          - high
-        required: false
-        default: "standard"
-      loudnorm:
-        description: "Normaliser le volume (-16 LUFS)"
-        type: boolean
-        required: false
-        default: false
       tag:
         description: "Identifiant de la vidéo (rempli par la page web)"
         required: false
@@ -111,17 +94,16 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Installer FFmpeg
-        timeout-minutes: 8
+      - name: Installer FFmpeg et ffprobe (binaires statiques en cache)
+        timeout-minutes: 6
+        uses: FedericoCarboni/setup-ffmpeg@37062fbf7149fc5578d6c57e08aed62458b375d6 # v3.1
+        with:
+          ffmpeg-version: release
+
+      - name: Vérifier les outils média
         run: |
-          if command -v ffmpeg >/dev/null 2>&1; then
-            ffmpeg -version | head -n 1
-          else
-            echo "Mise à jour des index APT..."
-            sudo timeout 240s apt-get update -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
-            echo "Installation de FFmpeg..."
-            sudo timeout 240s apt-get install -y ffmpeg
-          fi
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
 
       - name: Installer websocket-client
         timeout-minutes: 3
@@ -132,18 +114,15 @@ jobs:
       - name: Rendre la vidéo
         env:
           FICHIER: ${{ steps.source.outputs.fichier }}
-          FPS: ${{ inputs.fps }}
+          FPS: "auto"
           SCALE: ${{ inputs.scale }}
           TEST: ${{ inputs.test }}
           DURATION: ${{ inputs.duration }}
           FORMAT: ${{ inputs.format }}
           NOM: ${{ inputs.nom }}
-          QUALITE: ${{ inputs.qualite }}
-          LOUDNORM: ${{ inputs.loudnorm }}
+          QUALITE: "auto"
         run: |
-          EXTRA=""
-          if [ "$LOUDNORM" = "true" ]; then EXTRA="--loudnorm"; fi
-          python html2mp4.py --file "$FICHIER" --fps "$FPS" --scale "$SCALE" --test "$TEST" --duration "$DURATION" --format "$FORMAT" --name "$NOM" --quality "$QUALITE" $EXTRA
+          python html2mp4.py --file "$FICHIER" --fps "$FPS" --scale "$SCALE" --test "$TEST" --duration "$DURATION" --format "$FORMAT" --name "$NOM" --quality "$QUALITE"
 
       - name: Publier le MP4 (artefact)
         uses: actions/upload-artifact@v4
