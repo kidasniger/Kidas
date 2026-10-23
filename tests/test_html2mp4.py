@@ -5,6 +5,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from h2m.profiles import PRECISE_PROFILES
+from h2m.render import select_fps, select_quality
+
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("html2mp4", ROOT / "html2mp4.py")
 renderer = importlib.util.module_from_spec(SPEC)
@@ -156,6 +159,26 @@ class Html2Mp4Tests(unittest.TestCase):
     def test_quality_presets_cover_all_levels(self):
         for level in ("fast", "standard", "high"):
             self.assertIn("jpeg", renderer.QUALITY[level])
+
+    def test_automatic_fps_uses_60_for_seekable_profiles_and_30_for_generic(self):
+        for profile in PRECISE_PROFILES:
+            self.assertEqual(select_fps(profile, "auto"), 60, profile)
+        self.assertEqual(select_fps("generic", "auto"), 30)
+        self.assertEqual(select_fps("generic", 24), 24)
+        self.assertEqual(select_fps("gsapvideo", 24), 24)
+
+    def test_automatic_quality_optimizes_preview_and_reduced_renders(self):
+        self.assertEqual(select_quality("auto", scale=1, test=0), "standard")
+        self.assertEqual(select_quality("auto", scale=0.5, test=0), "fast")
+        self.assertEqual(select_quality("auto", scale=1, test=10), "fast")
+        self.assertEqual(select_quality("high", scale=0.5, test=10), "high")
+
+    def test_frontend_detects_specialized_audio_profiles_without_manual_fps_control(self):
+        page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn('<select id="fps">', page)
+        self.assertIn("const gsapvideo =", page)
+        self.assertIn("const musicpro =", page)
+        self.assertIn("workflowStepLabel", page)
 
     def test_precise_profiles_come_from_table(self):
         self.assertIn("kidas", renderer.PRECISE_PROFILES)
