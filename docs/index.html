@@ -269,14 +269,6 @@ ul#list button{box-shadow:none}
         </select>
       </div>
       <div class="field">
-        <label for="fps">Images / seconde</label>
-        <select id="fps">
-          <option value="30">30 (fluide)</option>
-          <option value="24">24 (cinéma)</option>
-          <option value="15">15 (plus rapide)</option>
-        </select>
-      </div>
-      <div class="field">
         <label for="format">Format</label>
         <select id="format">
           <option value="auto">Automatique</option>
@@ -297,7 +289,7 @@ ul#list button{box-shadow:none}
         </select>
       </div>
     </div>
-    <p class="mut" role="note">RENDRAX détecte automatiquement l’écran de démarrage du HTML et active le bouton « Lancer la vidéo » lorsqu’il est présent.</p>
+    <p class="mut" role="note">RENDRAX détecte automatiquement le type d’animation, la fréquence d’images et la qualité d’encodage. Il active aussi l’écran de démarrage lorsqu’il est présent.</p>
     <p id="securityStatus" role="status" class="mut" aria-live="polite" hidden></p>
     <div id="captchaMount" aria-hidden="true"></div>
     <button id="go" class="go" type="button"><span class="dot" aria-hidden="true"></span>Générer MP4</button>
@@ -451,6 +443,22 @@ function status(msg, cls, url) {
   if (url) $('#stla').href = url;
 }
 function hint(msg) { const h = $('#hint'); h.hidden = !msg; h.textContent = msg || ''; }
+function workflowStepIndex(name) {
+  if (/Publier le MP4|Supprimer les fichiers temporaires/i.test(name || '')) return 3;
+  if (/Rendre la vidéo/i.test(name || '')) return 2;
+  if (/Préparer le HTML source|Installer FFmpeg|Installer websocket-client|Set up job|actions\/checkout|setup-python/i.test(name || '')) return 1;
+  return 2;
+}
+function workflowStepLabel(name) {
+  if (/Préparer le HTML source/i.test(name || '')) return 'Préparation du HTML temporaire…';
+  if (/Installer FFmpeg/i.test(name || '')) return 'Préparation du moteur vidéo…';
+  if (/Installer websocket-client/i.test(name || '')) return 'Préparation des dépendances…';
+  if (/Rendre la vidéo/i.test(name || '')) return 'Génération des images et synchronisation audio…';
+  if (/Publier le MP4 \(artefact\)/i.test(name || '')) return 'Finalisation et vérification du MP4…';
+  if (/Publier le MP4 \(Release/i.test(name || '')) return 'Publication du MP4…';
+  if (/Supprimer les fichiers temporaires/i.test(name || '')) return 'Nettoyage sécurisé des fichiers temporaires…';
+  return 'Préparation du rendu…';
+}
 function setBusy(b) {
   busy = b;
   $('#go').disabled = b || !securityReady;
@@ -471,6 +479,19 @@ function analyze(t) {
   const voicevideo = t.includes('window.__video') && /\bseek\s*\(/.test(t)
     && /<audio\b[^>]*\ssrc=["']data:audio\//i.test(t) && /\bDUR\s*=/.test(t);
   if (voicevideo) return { kind: 'voicevideo', label: 'Vidéo React (audio intégré + window.__video)' };
+  const musicpro = t.includes('function render(t)') && /atob\(\s*VOICE\s*\)/.test(t)
+    && /function\s+music\s*\(/.test(t) && /function\s+go\s*\(/.test(t)
+    && /\(function\s+lp\s*\(\)\s*\{/.test(t) && /\bconst\s+D\s*=\s*\d/.test(t)
+    && /\bvP\s*=/.test(t) && /\bmP\s*=/.test(t);
+  if (musicpro) return { kind: 'musicpro', label: 'MusicPro (canvas + voix et musique synchronisées)' };
+  const gsapvideo = /<audio\b[^>]*\bsrc=["']data:audio\/[a-z0-9.+-]+;base64,/i.test(t)
+    && /\bconst\s+T\s*=\s*\[\s*\d/.test(t) && /\bSUB\s*=/.test(t)
+    && /\btl\s*=\s*gsap\.timeline\(\s*\{\s*paused\s*:\s*true\s*\}\s*\)/.test(t)
+    && /\btl\.time\(\s*t\s*,\s*false\s*\)/.test(t)
+    && /\bstarted\s*\?\s*a\.currentTime/.test(t)
+    && /requestAnimationFrame\s*\(\s*lp\s*\)/.test(t)
+    && /[.#]st\s*\{[^}]*?width:\s*\d+px;\s*height:\s*\d+px/.test(t);
+  if (gsapvideo) return { kind: 'gsapvideo', label: 'Vidéo GSAP synchronisée sur la piste audio' };
   return { kind: 'generic', label: 'Page HTML générique' };
 }
 function showVerdict(v, cls, msg) {
@@ -584,11 +605,13 @@ async function loadList() {
   }
 }
 async function waitJob(id, t0) {
+  let polls = 0;
   while (Date.now() - t0 < 95 * 60000) {
     if (cancelled) { const e = new Error('annulé'); e.cancelled = true; throw e; }
     await sleep(6000);
     if (cancelled) { const e = new Error('annulé'); e.cancelled = true; throw e; }
-    const job = await api('/job?id=' + encodeURIComponent(id));
+    const showDetails = polls++ % 3 === 0;
+    const job = await api('/job?id=' + encodeURIComponent(id) + (showDetails ? '&details=1' : ''));
     const elapsed = mmss(Date.now() - t0);
     if (!job.found) {
       setSteps(1); status('Démarrage du rendu… (' + elapsed + ')');
@@ -596,13 +619,20 @@ async function waitJob(id, t0) {
     }
     currentRunId = job.runId || currentRunId;
     if (job.status !== 'completed') {
-      setSteps(2);
-      status((job.status === 'queued' ? 'En file d’attente… ' : 'Rendu en cours… ') + '(' + elapsed + ')', null, job.html_url);
-      hint('Le rendu peut prendre plusieurs minutes. Tu peux quitter cette page : le suivi reprendra à son retour.');
+      if (job.currentStep) {
+        setSteps(workflowStepIndex(job.currentStep));
+        status(workflowStepLabel(job.currentStep) + ' (' + elapsed + ')', null, job.html_url);
+      } else {
+        setSteps(job.status === 'queued' ? 1 : 2);
+        status((job.status === 'queued' ? 'En file d’attente… ' : 'Rendu en cours… ') + '(' + elapsed + ')', null, job.html_url);
+      }
+      hint('Le suivi identifie automatiquement l’étape en cours. Tu peux quitter cette page : il reprendra à ton retour.');
       continue;
     }
     if (job.conclusion !== 'success') {
-      const e = new Error('Le rendu a échoué. Consulte le journal pour connaître la cause.'); e.url = job.html_url; throw e;
+      const where = job.currentStep ? workflowStepLabel(job.currentStep).replace(/…$/, '') : '';
+      const e = new Error(where ? 'Échec : ' + where + '. Consulte le journal pour le détail.' : 'Le rendu a échoué. Consulte le journal pour connaître la cause.');
+      e.url = job.html_url; throw e;
     }
     if (job.release) return job.release;
     setSteps(3); status('Publication du MP4… (' + elapsed + ')');
@@ -648,7 +678,7 @@ async function go() {
     const renderCaptcha = await captchaToken();
     if (cancelled) { const e = new Error('annulé'); e.cancelled = true; throw e; }
     await api('/render', { method: 'POST', body: {
-      id, captchaToken: renderCaptcha, fps: $('#fps').value, scale: m.scale, test: m.test,
+      id, captchaToken: renderCaptcha, scale: m.scale, test: m.test,
       duration: $('#duration').value, format: $('#format').value, name: f.name.replace(/\.html?$/i, '')
     }});
     dispatchAccepted = true;
