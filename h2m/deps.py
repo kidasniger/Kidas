@@ -41,6 +41,14 @@ def ensure_deps():
         if not (sh(base + ["websocket-client"]) or sh(base + ["--break-system-packages", "websocket-client"])):
             die("Impossible d'installer websocket-client. Essaie : pip install websocket-client")
 
+    try:
+        import PIL  # noqa: F401
+    except ImportError:
+        info("Installation de Pillow pour le filigrane animé (pip)…")
+        base = [sys.executable, "-m", "pip", "install", "-q"]
+        if not (sh(base + ["Pillow"]) or sh(base + ["--break-system-packages", "Pillow"])):
+            die("Impossible d'installer Pillow. Essaie : pip install Pillow")
+
     if not shutil.which("ffmpeg"):
         info("Installation de FFmpeg…")
         if IS_TERMUX:
