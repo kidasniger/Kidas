@@ -52,7 +52,17 @@ window.__seek = async (t) => {
     }
     const progress = document.querySelector('#pg');
     if (progress) {
-      const total = T.length ? Number(T[T.length - 1]) : 1;
+      // Certaines vidéos GSAP fournissent T, d'autres seulement D.
+      // Ne jamais référencer T directement : son absence ferait échouer tout le rendu.
+      let total = 0;
+      try {
+        if (typeof T !== 'undefined' && T && T.length) total = Number(T[T.length - 1]);
+        if ((!Number.isFinite(total) || total <= 0) && typeof D !== 'undefined') total = Number(D);
+      } catch (e) {}
+      if (!Number.isFinite(total) || total <= 0) {
+        const audio = document.querySelector('#a');
+        total = audio && Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 1;
+      }
       progress.style.width = (Math.max(0, Math.min(1, time / total)) * 1080) + 'px';
     }
     const overlay = document.querySelector('#go');
