@@ -53,10 +53,12 @@ def _is_gsapvideo(text):
     # GSAP timelines synchronized to a base64 audio track. These must be rendered frame-by-frame.
     return (
         bool(re.search(r"<audio\b[^>]*\bsrc=[\"']data:audio/[a-z0-9.+-]+;base64,", text, re.I))
-        and bool(re.search(r"\bconst\s+T\s*=\s*\[\s*\d", text))
+        # Les variantes peuvent déclarer les timings dans T=[...] ou une durée D=...
+        # et appeler tl.time(t,false) ou tl.time(Math.min(t,D),false).
+        and bool(re.search(r"\b(?:const\s+T\s*=\s*\[\s*\d|const\s+D\s*=\s*\d)", text))
         and bool(re.search(r"\bSUB\s*=", text))
         and bool(re.search(r"\btl\s*=\s*gsap\.timeline\(\s*\{\s*paused\s*:\s*true\s*\}\s*\)", text))
-        and bool(re.search(r"\btl\.time\(\s*t\s*,\s*false\s*\)", text))
+        and bool(re.search(r"\btl\.time\([^;]*?,\s*false\s*\)", text))
         and bool(re.search(r"\bstarted\s*\?\s*a\.currentTime", text))
         and bool(re.search(r"requestAnimationFrame\s*\(\s*lp\s*\)", text))
         and bool(re.search(r"[.#]st\s*\{[^}]*?width:\s*\d+px;\s*height:\s*\d+px", text))
