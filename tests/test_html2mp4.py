@@ -182,6 +182,19 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertIn("const musicpro =", page)
         self.assertIn("workflowStepLabel", page)
 
+    def test_watermark_is_optional_from_ui_through_workflow(self):
+        page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+        api = (ROOT / "api" / "render.js").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github" / "workflows" / "render.yml").read_text(encoding="utf-8")
+        cli = (ROOT / "html2mp4.py").read_text(encoding="utf-8")
+        self.assertIn('id="watermark" type="checkbox" checked', page)
+        self.assertIn("watermark: $('#watermark').checked", page)
+        self.assertIn("watermark = true", api)
+        self.assertIn("watermark: String(watermarkEnabled)", api)
+        self.assertIn("type: boolean", workflow)
+        self.assertIn('args+=(--no-watermark)', workflow)
+        self.assertIn('--no-watermark', cli)
+
     def test_animated_watermark_defaults_and_filter(self):
         from h2m.watermark import _overlay_filter, _make_apng, validate_watermark
         self.assertEqual(validate_watermark(), ("RENDRAX", "pulse", "bottom-right", 0.45, 0.07))
