@@ -180,6 +180,25 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertIn("const musicpro =", page)
         self.assertIn("workflowStepLabel", page)
 
+    def test_animated_watermark_defaults_and_filter(self):
+        from h2m.watermark import validate_watermark, watermark_filter
+        self.assertEqual(validate_watermark(), ("RENDRAX", "pulse", "bottom-right", 0.45, 0.07))
+        filt = watermark_filter("RENDRAX", "pulse", "bottom-right", 0.45, 0.07)
+        self.assertIn("sin(2*PI*t/2)", filt)
+        self.assertIn("text='RENDRAX'", filt)
+        self.assertIn("alpha=", filt)
+
+    def test_watermark_rejects_invalid_settings(self):
+        from h2m.watermark import validate_watermark
+        cases = [
+            {"text": ""}, {"text": "x" * 81}, {"animation": "explode"},
+            {"position": "outside"}, {"opacity": 0.05}, {"opacity": 1.1},
+            {"size": 0.01}, {"size": 0.2},
+        ]
+        for kwargs in cases:
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                validate_watermark(**kwargs)
+
     def test_precise_profiles_come_from_table(self):
         self.assertIn("kidas", renderer.PRECISE_PROFILES)
         self.assertNotIn("generic", renderer.PRECISE_PROFILES)
