@@ -8,12 +8,16 @@ const DURATIONS = new Set(['0', '10', '30', '60', '120', '300']);
 export default async function handler(req, res) {
   if (req.method !== 'POST') return send(res, 405, { error: 'Méthode non autorisée.' });
   if (!sameOrigin(req)) return send(res, 403, { error: 'Origine de la demande refusée.' });
-  const { id, captchaToken, scale, test, duration, format, name } = readBody(req);
+  const { id, captchaToken, scale, test, duration, format, name, watermark = true } = readBody(req);
   if (!validJobId(id)) return send(res, 400, { error: 'Identifiant temporaire invalide.' });
   if (!['0.5', '1'].includes(String(scale)) ||
-      !['0', '10'].includes(String(test)) || !DURATIONS.has(String(duration)) || !FORMATS.has(String(format))) {
+      !['0', '10'].includes(String(test)) || !DURATIONS.has(String(duration)) || !FORMATS.has(String(format)) ||
+      (typeof watermark !== 'boolean' && !['true', 'false'].includes(String(watermark).toLowerCase()))) {
     return send(res, 400, { error: 'Réglages de conversion invalides.' });
   }
+  const watermarkEnabled = typeof watermark === 'boolean'
+    ? watermark
+    : String(watermark).toLowerCase() === 'true';
   let stage = 'vérification de sécurité';
   try {
     await verifyTurnstile(req, captchaToken);
@@ -38,6 +42,7 @@ export default async function handler(req, res) {
       test: String(test),
       duration: String(duration),
       format: String(format),
+      watermark: String(watermarkEnabled),
       nom: safeName(name),
       tag: id
     };
