@@ -68,6 +68,13 @@ def main():
                     help="auto, fast (rapide), standard ou high (plus net)")
     ap.add_argument("--preview", action="store_true", help="aperçu rapide : demi-résolution, qualité fast, fichier *_apercu.mp4")
     ap.add_argument("--loudnorm", action="store_true", help="normalise le volume à -16 LUFS (recommandé pour les réseaux sociaux)")
+    ap.add_argument("--no-watermark", dest="watermark", action="store_false", help="désactive le filigrane animé RENDRAX")
+    ap.set_defaults(watermark=True)
+    ap.add_argument("--watermark-text", default="RENDRAX", help="texte du filigrane (1 à 80 caractères)")
+    ap.add_argument("--watermark-animation", choices=("pulse", "fade", "float", "fixed"), default="pulse", help="animation du filigrane")
+    ap.add_argument("--watermark-position", choices=("bottom-right", "bottom-left", "top-right", "top-left", "center"), default="bottom-right", help="position du filigrane")
+    ap.add_argument("--watermark-opacity", type=float, default=0.45, help="opacité du filigrane, entre 0.1 et 1")
+    ap.add_argument("--watermark-size", type=float, default=0.07, help="taille relative du texte, entre 0.02 et 0.12")
     ap.add_argument("--name", default="", help="nom du MP4 (sans extension) ; défaut : nom du fichier HTML")
     args = ap.parse_args()
     if args.preview:
