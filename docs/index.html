@@ -76,6 +76,10 @@ h2{font-size:1.02rem;margin:0;font-weight:700;letter-spacing:-.01em}
 /* formulaires */
 label{display:block;font-weight:600;margin:0 0 6px;font-size:.82rem;color:var(--mut)}
 .field{display:flex;flex-direction:column;min-width:0}
+.field-wide{grid-column:1/-1}
+.checkline{display:flex;align-items:center;gap:10px;min-height:46px;margin:0;padding:10px 12px;border:1px solid var(--bd);border-radius:var(--rs);background:var(--surf2);color:var(--tx);font-size:.95rem;cursor:pointer}
+.checkline:hover{border-color:color-mix(in srgb,var(--tx) 25%,var(--bd))}
+.checkline input{width:18px;height:18px;flex:0 0 auto;accent-color:var(--ac);margin:0}
 select{width:100%;min-height:46px;padding:10px 12px;border:1px solid var(--bd);border-radius:var(--rs);background-color:var(--surf2);color:var(--tx);font:inherit;font-size:.95rem}
 select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;text-overflow:ellipsis;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
@@ -288,8 +292,15 @@ ul#list button{box-shadow:none}
           <option value="300">5 minutes</option>
         </select>
       </div>
+      <div class="field field-wide">
+        <label class="checkline" for="watermark">
+          <input id="watermark" type="checkbox" checked>
+          <span>Ajouter le filigrane animé RENDRAX</span>
+        </label>
+        <p class="mut">Activé par défaut. Décoche cette option pour générer le MP4 sans filigrane.</p>
+      </div>
     </div>
-    <p class="mut" role="note">RENDRAX détecte automatiquement le type d’animation, la fréquence d’images et la qualité d’encodage. Il active aussi l’écran de démarrage lorsqu’il est présent. Un filigrane animé RENDRAX (pulsation, 45 % d’opacité, taille 7 %, en bas à droite) est intégré au MP4 final ; le HTML source reste intact.</p>
+    <p class="mut" role="note">RENDRAX détecte automatiquement le type d’animation, la fréquence d’images et la qualité d’encodage. Il active aussi l’écran de démarrage lorsqu’il est présent. Le HTML source reste intact.</p>
     <p id="securityStatus" role="status" class="mut" aria-live="polite" hidden></p>
     <div id="captchaMount" aria-hidden="true"></div>
     <button id="go" class="go" type="button"><span class="dot" aria-hidden="true"></span>Générer MP4</button>
@@ -682,7 +693,7 @@ async function go() {
     if (cancelled) { const e = new Error('annulé'); e.cancelled = true; throw e; }
     await api('/render', { method: 'POST', body: {
       id, captchaToken: renderCaptcha, scale: m.scale, test: m.test,
-      duration: $('#duration').value, format: $('#format').value, name: f.name.replace(/\.html?$/i, '')
+      duration: $('#duration').value, format: $('#format').value, watermark: $('#watermark').checked, name: f.name.replace(/\.html?$/i, '')
     }});
     dispatchAccepted = true;
     store.set('kidas_job', JSON.stringify({ id, t0 }));
