@@ -49,28 +49,12 @@ def watermark_filter(text, animation, position, opacity, size):
         x, y = margin, margin
     else:
         x, y = "(w-tw)/2", "(h-th)/2"
-    font = "DejaVu Sans"
-    # Le losange sert de marque graphique intégrée ; le texte est rendu séparément.
-    logo_size = f"h*{size * 0.72:.5f}"
-    text_size = f"h*{size:.5f}"
-    safe_text = _escape_drawtext(text)
-    if position == "bottom-right":
-        logo_x = f"w-tw-th-{margin}*1.8"
-    elif position in ("bottom-left", "top-left"):
-        logo_x = f"{margin}+tw*0"
-    elif position == "top-right":
-        logo_x = f"w-tw-th-{margin}*1.8"
-    else:
-        logo_x = f"(w-tw-th)/2"
-    logo = (f"drawtext=font='{font}':text='◆':fontcolor=white:fontsize={logo_size}:"
-            f"alpha='{alpha}':x={logo_x}:y={y}")
-    label = (f"drawtext=font='{font}':text='{safe_text}':fontcolor=white:"
-             f"fontsize={text_size}:alpha='{alpha}':x={x}:y={y}")
     if animation == "float":
-        float_y = f"{y}+sin(2*PI*t/4)*h*0.006"
-        logo = logo.replace(f":y={y}", f":y={float_y}")
-        label = label.replace(f":y={y}", f":y={float_y}")
-    return f"{logo},{label}"
+        y = f"{y}+sin(2*PI*t/4)*h*0.006"
+    # Losange de marque + texte dans un seul calque : aucune superposition de couches.
+    safe_text = _escape_drawtext("◆  " + text)
+    return (f"drawtext=font='DejaVu Sans':text='{safe_text}':fontcolor=white:"
+            f"fontsize=h*{size:.5f}:alpha='{alpha}':x={x}:y={y}")
 
 
 def apply_watermark(source, destination, text="RENDRAX", animation="pulse",
