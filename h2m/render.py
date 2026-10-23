@@ -377,6 +377,16 @@ def render(html_path, args):
             die("FFmpeg a échoué :\n" + err_path.read_text(errors="ignore")[-1000:])
 
         shutil.move(str(out_tmp), str(out_final))
+        if getattr(args, "watermark", True):
+            from h2m.watermark import apply_watermark
+            apply_watermark(
+                out_final, tmp / "watermarked.mp4",
+                text=getattr(args, "watermark_text", "RENDRAX"),
+                animation=getattr(args, "watermark_animation", "pulse"),
+                position=getattr(args, "watermark_position", "bottom-right"),
+                opacity=float(getattr(args, "watermark_opacity", 0.45)),
+                size=float(getattr(args, "watermark_size", 0.07)),
+            )
         video_duration, audio_duration, gap_ms = verify_sync(out_final, fps, n_frames / fps)
         if is_precise and audio_inputs:
             if video_duration is None or audio_duration is None:
