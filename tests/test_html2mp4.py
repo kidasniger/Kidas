@@ -1,6 +1,8 @@
 import argparse
 import base64
 import importlib.util
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -181,12 +183,65 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertIn("workflowStepLabel", page)
 
     def test_animated_watermark_defaults_and_filter(self):
-        from h2m.watermark import validate_watermark, watermark_filter
+        from h2m.watermark import _overlay_filter, _make_apng, validate_watermark
         self.assertEqual(validate_watermark(), ("RENDRAX", "pulse", "bottom-right", 0.45, 0.07))
-        filt = watermark_filter("RENDRAX", "pulse", "bottom-right", 0.45, 0.07)
-        self.assertIn("sin(2*PI*t/2)", filt)
-        self.assertIn("text='◆  RENDRAX'", filt)
-        self.assertIn("alpha=", filt)
+        filt = _overlay_filter("bottom-right", "pulse", 320, 180)
+        self.assertIn("[1:v]format=rgba", filt)
+        self.assertIn("overlay=", filt)
+        with tempfile.TemporaryDirectory() as td:
+            apng = Path(td) / "watermark.apng"
+            _make_apng(apng, 320, 180, "RENDRAX", "pulse", 0.45, 0.07)
+            from PIL import Image
+            with Image.open(apng) as anim:
+                self.assertEqual(anim.n_frames, 40)
+                self.assertEqual(anim.size[0] > 0, True)
+                alphas = []
+                for idx in (0, 10, 20, 30):
+                    anim.seek(idx)
+                    alphas.append(anim.convert("RGBA").getchannel("A").getextrema()[1])
+                self.assertGreater(max(alphas), min(alphas))
+
+    def test_watermark_integrates_real_mp4_and_keeps_audio(self):
+        ffmpeg = shutil.which("ffmpeg")
+        ffprobe = shutil.which("ffprobe")
+        if not ffmpeg or not ffprobe:
+            self.skipTest("FFmpeg/ffprobe not installed")
+        from h2m.watermark import apply_watermark
+        from PIL import Image, ImageChops
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = root / "source.mp4"
+            original = root / "original.mp4"
+            destination = root / "watermarked.mp4"
+            subprocess.run([
+                ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+                "-f", "lavfi", "-i", "color=c=blue:s=320x180:r=20:d=2",
+                "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+                "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", str(source),
+            ], check=True, timeout=60)
+            shutil.copy2(source, original)
+            apply_watermark(source, destination, text="RENDRAX", animation="pulse",
+                            position="bottom-right", opacity=0.45, size=0.07)
+            self.assertTrue(source.is_file())
+            self.assertFalse(destination.exists())
+            probe = subprocess.run([
+                ffprobe, "-v", "error", "-show_entries", "stream=codec_type,duration",
+                "-of", "json", str(source),
+            ], capture_output=True, text=True, check=True, timeout=30)
+            streams = __import__("json").loads(probe.stdout)["streams"]
+            self.assertTrue(any(s["codec_type"] == "video" for s in streams))
+            self.assertTrue(any(s["codec_type"] == "audio" for s in streams))
+            durations = [float(s["duration"]) for s in streams if s.get("duration")]
+            self.assertLessEqual(max(durations) - min(durations), 0.08)
+            before, after = root / "before.png", root / "after.png"
+            for video, image in ((original, before), (source, after)):
+                subprocess.run([
+                    ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-ss", "0.5",
+                    "-i", str(video), "-frames:v", "1", str(image),
+                ], check=True, timeout=30)
+            with Image.open(before) as first, Image.open(after) as second:
+                self.assertIsNotNone(ImageChops.difference(first.convert("RGB"), second.convert("RGB")).getbbox())
 
     def test_watermark_rejects_invalid_settings(self):
         from h2m.watermark import validate_watermark
