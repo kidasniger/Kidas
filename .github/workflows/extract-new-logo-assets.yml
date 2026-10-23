@@ -1,0 +1,72 @@
+name: Extraire temporairement les nouveaux assets logo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/extract-new-logo-assets.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Extraire l'archive dans logo
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path, PurePosixPath
+          from stat import S_ISLNK
+          from zipfile import ZipFile
+
+          archive = Path("858569628_1836682800692165_6520325319264193606_n.gif.zip")
+          destination = Path("logo")
+          if not archive.is_file():
+              raise SystemExit("Archive à la racine introuvable.")
+          destination.mkdir(parents=True, exist_ok=True)
+
+          with ZipFile(archive) as bundle:
+              files = []
+              for info in bundle.infolist():
+                  name = info.filename.replace("\\", "/")
+                  path = PurePosixPath(name)
+                  if path.is_absolute() or any(part == ".." for part in path.parts):
+                      raise SystemExit(f"Chemin interdit dans le ZIP : {info.filename!r}")
+                  if S_ISLNK(info.external_attr >> 16):
+                      raise SystemExit(f"Lien symbolique refusé dans le ZIP : {info.filename!r}")
+                  if not info.is_dir():
+                      files.append(info)
+              if not files:
+                  raise SystemExit("Le ZIP ne contient aucun fichier à extraire.")
+              for info in files:
+                  normalized = info.filename.replace("\\", "/")
+                  relative = PurePosixPath(normalized)
+                  target = destination.joinpath(*relative.parts)
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  with bundle.open(info) as src, target.open("wb") as dst:
+                      dst.write(src.read())
+                  print(f"Extrait : {target.as_posix()} ({target.stat().st_size} octets)")
+          print(f"Extraction terminée : {len(files)} fichier(s) dans logo/.")
+          PY
+      - name: Enregistrer les fichiers extraits puis retirer le workflow temporaire
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add logo/
+          git rm .github/workflows/extract-new-logo-assets.yml
+          if git diff --cached --quiet; then
+            echo "Aucun changement à enregistrer."
+            exit 1
+          fi
+          git commit -m "Extract supplied GIF archive into logo"
+          git push origin HEAD:main
