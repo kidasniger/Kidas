@@ -108,8 +108,9 @@ jobs:
       - name: Installer websocket-client
         timeout-minutes: 3
         run: |
-          python -m pip install --disable-pip-version-check --no-input --retries 2 --timeout 20 websocket-client
+          python -m pip install --disable-pip-version-check --no-input --retries 2 --timeout 20 websocket-client Pillow
           python -c "import websocket; print('websocket-client installé:', websocket.__version__)"
+          python -c "import PIL; print('Pillow installé:', PIL.__version__)"
 
       - name: Rendre la vidéo
         env:
