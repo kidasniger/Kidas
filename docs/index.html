@@ -11,8 +11,32 @@
 
   <link rel="icon" type="image/png" sizes="96x96" href="/favicon.png">
   <link rel="apple-touch-icon" href="/favicon.png">
-<meta name="theme-color" content="#080b18" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f3f6ff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#f3f6ff">
+<script>
+(function(){
+  const root = document.documentElement;
+  let timer = null;
+  function updateThemeFromLocalTime(){
+    const now = new Date();
+    const hour = now.getHours();
+    const dark = hour < 7 || hour >= 19;
+    root.dataset.theme = dark ? 'dark' : 'light';
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = dark ? '#080b18' : '#f3f6ff';
+
+    const next = new Date(now);
+    next.setHours(dark ? 7 : 19, 0, 0, 0);
+    if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1);
+    if (timer !== null) window.clearTimeout(timer);
+    timer = window.setTimeout(updateThemeFromLocalTime, Math.max(1000, next.getTime() - now.getTime() + 100));
+  }
+  updateThemeFromLocalTime();
+  document.addEventListener('visibilitychange', function(){
+    if (!document.hidden) updateThemeFromLocalTime();
+  });
+  window.addEventListener('focus', updateThemeFromLocalTime);
+})();
+</script>
 <title>HTML → MP4 · RENDRAX</title>
 <style>
 :root{
@@ -20,10 +44,10 @@
   --ac:#316bff;--ac2:#6d49ef;--on:#ffffff;--ok:#0e956a;--err:#cc3655;--warn:#98600a;
   --r:22px;--rs:14px;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--shadow:0 12px 34px rgba(34,62,130,.065);color-scheme:light
 }
-@media(prefers-color-scheme:dark){:root{
+:root[data-theme="dark"]{
   --bg:#080b18;--surf:#11172a;--surf2:#161e35;--tx:#f2f5ff;--mut:#9ca9c8;--bd:#273353;
   --ac:#50c8ff;--ac2:#a078ff;--on:#07101f;--ok:#46d7a1;--err:#ff718b;--warn:#ffc36e;--shadow:0 14px 40px rgba(0,0,0,.2);color-scheme:dark
-}}
+}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 main{max-width:620px;margin:0 auto;padding:max(18px,env(safe-area-inset-top)) 14px max(48px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
