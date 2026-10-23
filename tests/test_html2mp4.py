@@ -109,9 +109,27 @@ class Html2Mp4Tests(unittest.TestCase):
                  'let started=0;(function lp(){const t=started?a.currentTime:1.6;tl.time(t,false);requestAnimationFrame(lp)})();'
                  '</script></body></html>')
 
+    # Variante rencontrée dans Cest_quoi_un_algorithme_Video.html :
+    # durée D et appel tl.time(Math.min(t,D), false), sans const T.
+    GSAPVIDEO_D_VARIANT = (
+        '<html><head><style>#st{position:absolute;width:1080px;height:1920px}</style></head><body>'
+        '<div id="st"></div><audio id="a" src="data:audio/mpeg;base64,QUJD"></audio><script>'
+        'const D=51.88;const AN=[[0,0],[1,1]],SUB=[[0,"start"]];'
+        'const tl=gsap.timeline({paused:true});let started=0;'
+        '(function lp(){const t=started?a.currentTime:1.5;tl.time(Math.min(t,D),false);requestAnimationFrame(lp)})();'
+        '</script></body></html>'
+    )
+
     def test_gsap_audio_timeline_pattern_is_recognised(self):
         self.assertEqual(renderer.detect_profile(self.GSAPVIDEO)[0], "gsapvideo")
         self.assertIn("gsapvideo", renderer.PRECISE_PROFILES)
+
+    def test_gsap_audio_timeline_duration_variant_is_recognised_and_patched(self):
+        self.assertEqual(renderer.detect_profile(self.GSAPVIDEO_D_VARIANT)[0], "gsapvideo")
+        patched, profile = renderer.patch_html(self.GSAPVIDEO_D_VARIANT)
+        self.assertEqual(profile, "gsapvideo")
+        self.assertLess(patched.index("window.__manual=true"), patched.index("const D=51.88"))
+        self.assertIn("(function lp(){if(window.__manual)return;", patched)
 
     def test_gsap_audio_timeline_patch_stops_real_time_loop(self):
         patched, profile = renderer.patch_html(self.GSAPVIDEO)
