@@ -210,6 +210,9 @@ class Html2Mp4Tests(unittest.TestCase):
         # Explicitly delegate media playback but keep untrusted HTML isolated.
         self.assertIn('sandbox="allow-scripts" allow="autoplay"', page)
         self.assertNotIn('sandbox="allow-scripts allow-same-origin"', page)
+        self.assertIn("Chargement de l’aperçu…", page)
+        self.assertIn("p.addEventListener('load', reveal", page)
+        self.assertIn("p.srcdoc = fileText", page)
 
     def test_watermark_is_optional_from_ui_through_workflow(self):
         page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
