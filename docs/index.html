@@ -100,26 +100,6 @@ button:disabled{opacity:.45;cursor:not-allowed;transform:none}
 button.go{min-height:54px;font-size:1.02rem;margin-top:16px}
 button.go .dot{width:10px;height:10px;border-radius:50%;background:currentColor}
 
-/* création assistée par IA */
-textarea.ai-prompt,textarea.ai-code{
-  display:block;width:100%;min-height:132px;padding:13px 14px;
-  border:1px solid var(--bd);border-radius:var(--rs);background:var(--surf2);
-  color:var(--tx);font:inherit;line-height:1.5;resize:vertical;
-  transition:border-color .16s,box-shadow .16s
-}
-textarea.ai-prompt:focus-visible,textarea.ai-code:focus-visible{
-  outline:none;border-color:var(--ac);box-shadow:0 0 0 4px color-mix(in srgb,var(--ac) 15%,transparent)
-}
-textarea.ai-code{min-height:220px;max-height:420px;font:12px/1.45 var(--mono);white-space:pre;tab-size:2}
-.ai-options{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
-.ai-note{margin:10px 0 0;font-size:.84rem;color:var(--mut)}
-#aiStatus{margin:12px 0 0;padding:11px 13px;border-radius:var(--rs);border:1px solid var(--bd);font-size:.9rem;overflow-wrap:anywhere}
-#aiStatus.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 35%,transparent);background:color-mix(in srgb,var(--ok) 8%,transparent)}
-#aiStatus.err{color:var(--err);border-color:color-mix(in srgb,var(--err) 35%,transparent);background:color-mix(in srgb,var(--err) 8%,transparent)}
-#aiCodeDetails{margin-top:12px}
-#aiCodeDetails summary{cursor:pointer;font-size:.9rem;font-weight:650;color:var(--mut);padding:6px 0}
-@media(min-width:480px){.ai-options{grid-template-columns:1fr 1fr}}
-
 /* zone de dépôt */
 .drop{display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;border:1.5px dashed var(--bd);border-radius:var(--r);padding:28px 16px;text-align:center;background:var(--surf2);cursor:pointer;margin:0;color:var(--tx);font-size:inherit;font-weight:400;transition:border-color .15s,background-color .15s}
 .drop:hover,.drop.over{border-color:var(--ac);background:color-mix(in srgb,var(--ac) 7%,var(--surf2))}
@@ -266,52 +246,6 @@ ul#list button{box-shadow:none}
     <div class="brand"><img class="brand-logo" src="/assets/rendrax-logo.svg" alt="RENDRAX" width="520" height="120"></div>
     <h1 aria-label="HTML vers MP4">HTML <span aria-hidden="true">→</span> MP4</h1>
   </header>
-
-  <section class="card" aria-labelledby="h-ai">
-    <div class="head"><span class="num" aria-hidden="true">IA</span><h2 id="h-ai">Créer une animation avec l’IA</h2></div>
-    <label for="aiPrompt">Décris la vidéo que tu veux créer</label>
-    <textarea id="aiPrompt" class="ai-prompt" rows="5" maxlength="4000" placeholder="Ex. : Une fusée décolle depuis une planète bleue, traverse des étoiles puis révèle le titre « Explore l’univers », avec des mouvements fluides et des couleurs lumineuses." aria-describedby="aiHelp"></textarea>
-    <div class="ai-options">
-      <div class="field">
-        <label for="aiStyle">Style visuel</label>
-        <select id="aiStyle">
-          <option value="modern">Moderne et vibrant</option>
-          <option value="cinematic">Cinématographique</option>
-          <option value="educational">Pédagogique</option>
-          <option value="minimal">Minimaliste</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="aiFormat">Format de la scène</label>
-        <select id="aiFormat">
-          <option value="portrait">Portrait · 9:16</option>
-          <option value="landscape">Paysage · 16:9</option>
-          <option value="square">Carré · 1:1</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="aiDuration">Durée cible</label>
-        <select id="aiDuration">
-          <option value="10">10 secondes</option>
-          <option value="30" selected>30 secondes</option>
-          <option value="60">60 secondes</option>
-        </select>
-      </div>
-    </div>
-    <p id="aiHelp" class="ai-note">L’IA prend kidas.html comme référence visuelle (scènes, transitions et palette), mais crée une nouvelle animation autonome sans audio, sans bibliothèque et sans ressource distante.</p>
-    <label class="checkline" for="aiAdult"><input id="aiAdult" type="checkbox"><span>Je confirme avoir 18 ans ou plus et utiliser ce générateur pour un usage professionnel ou commercial.</span></label>
-    <button id="aiGenerate" class="go" type="button" disabled>Générer l’HTML animé</button>
-    <p class="ai-note">Génération par Gemini via Google AI Studio. Le quota gratuit dépend du modèle et de ton projet. Selon les conditions de Google, le service est réservé aux usages professionnels/commerciaux et aux adultes ; avec l’offre sans frais, Google peut utiliser les entrées et réponses pour améliorer ses produits et les faire examiner. N’envoie aucune donnée personnelle, confidentielle ou sensible.</p>
-    <p id="aiStatus" role="status" aria-live="polite" hidden></p>
-    <div class="actions" id="aiActions" hidden>
-      <button class="sec" id="aiUse" type="button">Charger dans RENDRAX</button>
-      <a class="btn" id="aiDownload" download="animation-rendrax.html">Télécharger le HTML</a>
-    </div>
-    <details id="aiCodeDetails" hidden>
-      <summary>Afficher le code HTML généré</summary>
-      <textarea id="aiCode" class="ai-code" readonly spellcheck="false" aria-label="Code HTML généré"></textarea>
-    </details>
-  </section>
 
   <section class="card" aria-labelledby="h-file">
     <div class="head"><span class="num" aria-hidden="true">01</span><h2 id="h-file">Ton fichier HTML</h2></div>
@@ -495,7 +429,6 @@ async function initSecurity() {
     statusEl.hidden = false;
   }
   $('#go').disabled = !securityReady || busy;
-  $('#aiGenerate').disabled = !securityReady || !$('#aiAdult').checked || busy;
 }
 function captchaToken() {
   return new Promise((resolve, reject) => {
@@ -549,12 +482,6 @@ function analyze(t) {
   const count = (s, sub) => s.split(sub).length - 1;
   if (t.trim().length < 20 || !/<(?:!doctype|html|head|body|script|svg|canvas|div|style)\b/i.test(t))
     return { kind: 'invalid', label: 'Ce fichier ne ressemble pas à une page HTML.' };
-  const rendraxai = /window\.__rendraxAI\s*=\s*true\b/.test(t)
-    && /window\.__rendraxSeek\s*=/.test(t)
-    && /\bconst\s+D\s*=\s*\d+(?:\.\d+)?/.test(t)
-    && /[.#]stage\s*\{[^}]*?width:\s*(?:1080px;\s*height:\s*1920px|1920px;\s*height:\s*1080px|1080px;\s*height:\s*1080px)/.test(t)
-    && !/<(?:audio|video)\b|data:audio\//i.test(t);
-  if (rendraxai) return { kind: 'rendraxai', label: 'RENDRAX IA (animation sans audio, timeline synchronisée)' };
   const kidas = count(t, 'const [t,setT]=useState(0),') === 1 && /[.#]stage\s*\{/.test(t)
     && /\bAUD\s*=\s*'data:audio\//.test(t) && /\bD\s*=\s*\d/.test(t);
   if (kidas) return { kind: 'kidas', label: 'KIDAS (React + audio intégré)' };
@@ -601,7 +528,6 @@ async function checkFile() {
   if (v.kind === 'invalid') return showVerdict(v, 'err', '✗ ' + v.label + ' Import bloqué.');
   $('#prevBtn').hidden = false;
   if (v.kind === 'generic') showVerdict(v, 'warn', '⚠ Fichier non reconnu : rendu universel en temps réel. La durée, la synchronisation et le son ne sont pas garantis.');
-  else if (v.kind === 'rendraxai') showVerdict(v, 'ok', '✓ Fichier reconnu : ' + v.label + '. Rendu image par image sans piste audio.');
   else showVerdict(v, 'ok', '✓ Fichier reconnu : ' + v.label + '. Rendu image par image avec le son, synchronisé.');
 }
 function setFile(files) {
@@ -609,73 +535,6 @@ function setFile(files) {
   const dt = new DataTransfer(); dt.items.add(files[0]); $('#file').files = dt.files;
   checkFile();
 }
-let aiGenerating = false, aiGeneratedHtml = '', aiDownloadUrl = '', aiGeneratedFormat = 'portrait', aiGeneratedDuration = '30';
-function setAiStatus(message, kind) {
-  const el = $('#aiStatus');
-  el.hidden = !message;
-  el.textContent = message || '';
-  el.className = kind || '';
-}
-async function generateAnimatedHtml() {
-  if (busy || aiGenerating) return setAiStatus('Attends la fin du rendu ou de la génération en cours.', 'err');
-  const prompt = $('#aiPrompt').value.trim();
-  if (!$('#aiAdult').checked) return setAiStatus('Confirme les conditions d’âge et d’usage avant de générer.', 'err');
-  if (prompt.length < 5) return setAiStatus('Décris l’animation en quelques mots (5 caractères minimum).', 'err');
-  if (prompt.length > 4000) return setAiStatus('La description est trop longue (4 000 caractères maximum).', 'err');
-  if (!securityReady) return setAiStatus(securityMessage || 'La protection anti-robot n’est pas disponible. Réessaie plus tard.', 'err');
-
-  const button = $('#aiGenerate');
-  aiGenerating = true;
-  button.disabled = true;
-  button.textContent = 'Création du HTML…';
-  $('#aiActions').hidden = true;
-  $('#aiCodeDetails').hidden = true;
-  aiGeneratedHtml = '';
-  setAiStatus('Génération en cours… La création peut prendre quelques secondes.', '');
-
-  try {
-    const token = await captchaToken();
-    const result = await api('/generate-html', {
-      method: 'POST',
-      body: {
-        prompt,
-        adultConfirmed: $('#aiAdult').checked,
-        captchaToken: token,
-        style: $('#aiStyle').value,
-        format: $('#aiFormat').value,
-        duration: $('#aiDuration').value
-      }
-    });
-    if (typeof result.html !== 'string' || !result.html.trim()) throw new Error('L’IA n’a pas renvoyé de HTML exploitable.');
-    aiGeneratedHtml = result.html;
-    aiGeneratedFormat = $('#aiFormat').value;
-    aiGeneratedDuration = $('#aiDuration').value;
-    if (aiDownloadUrl) URL.revokeObjectURL(aiDownloadUrl);
-    aiDownloadUrl = URL.createObjectURL(new Blob([aiGeneratedHtml], { type: 'text/html;charset=utf-8' }));
-    $('#aiDownload').href = aiDownloadUrl;
-    $('#aiDownload').download = 'animation-rendrax.html';
-    $('#aiCode').value = aiGeneratedHtml;
-    $('#aiActions').hidden = false;
-    $('#aiCodeDetails').hidden = false;
-    setAiStatus('HTML généré. Télécharge-le ou charge-le dans RENDRAX pour le prévisualiser puis créer le MP4.', 'ok');
-  } catch (error) {
-    setAiStatus(error.message || 'La génération a échoué. Réessaie avec une description plus simple.', 'err');
-  } finally {
-    aiGenerating = false;
-    button.disabled = !$('#aiAdult').checked || !securityReady;
-    button.textContent = 'Générer l’HTML animé';
-  }
-}
-function useGeneratedHtml() {
-  if (!aiGeneratedHtml) return;
-  const file = new File([aiGeneratedHtml], 'animation-rendrax.html', { type: 'text/html' });
-  $('#format').value = aiGeneratedFormat;
-  $('#duration').value = aiGeneratedDuration;
-  setFile([file]);
-  $('#h-file').closest('section').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  setAiStatus('HTML chargé. Vérifie le verdict et l’aperçu dans la section « Ton fichier HTML » avant de lancer le rendu.', 'ok');
-}
-
 function uploadPrivateBlob(url, file) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -869,11 +728,6 @@ async function resume() {
   catch (e) { fail(e, Math.max(currentStepIndex(), 2)); }
   setBusy(false);
 }
-$('#aiGenerate').onclick = generateAnimatedHtml;
-$('#aiAdult').addEventListener('change', () => {
-  if (!aiGenerating) $('#aiGenerate').disabled = !$('#aiAdult').checked || !securityReady || busy;
-});
-$('#aiUse').onclick = useGeneratedHtml;
 $('#file').onchange = checkFile;
 $('#go').onclick = go;
 $('#cancel').onclick = cancel;
