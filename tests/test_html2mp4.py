@@ -310,5 +310,21 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertEqual(audio_verdict({"audio_tracks": ["a"], "peak_db": -12})[0], "ok")
 
 
+    def test_ai_animation_generator_is_connected_and_protected(self):
+        page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+        endpoint = (ROOT / "api" / "generate-html.js").read_text(encoding="utf-8")
+        self.assertIn('id="aiPrompt"', page)
+        self.assertIn('id="aiGenerate"', page)
+        self.assertIn("$('#aiGenerate').onclick = generateAnimatedHtml", page)
+        self.assertIn("$('#aiUse').onclick = useGeneratedHtml", page)
+        self.assertIn("setFile([file])", page)
+        self.assertIn("GEMINI_API_KEY", endpoint)
+        self.assertIn("verifyTurnstile(req, captchaToken)", endpoint)
+        self.assertIn("sameOrigin(req)", endpoint)
+        self.assertIn("/v1beta/interactions", endpoint)
+        self.assertIn("store: false", endpoint)
+        self.assertIn("unsafeExternalCode(html)", endpoint)
+        self.assertIn("gemini-3.8-flash", endpoint)
+
 if __name__ == "__main__":
     unittest.main()
