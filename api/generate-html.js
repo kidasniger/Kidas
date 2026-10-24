@@ -135,7 +135,7 @@ Commence directement par <!doctype html>. Le corps doit occuper la fenêtre (100
     const apiError = responseBody?.error || {};
     const apiStatus = String(apiError.status || '');
     const apiMessage = typeof apiError.message === 'string'
-      ? apiError.message.replace(/[\\r\\n\\t]+/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, 220)
+      ? apiError.message.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 220)
       : '';
     console.warn('[RENDRAX IA] Échec Gemini', JSON.stringify({
       httpStatus: upstream.status,
