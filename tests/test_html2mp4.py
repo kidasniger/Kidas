@@ -207,6 +207,9 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertIn("const gsapvideo =", page)
         self.assertIn("const musicpro =", page)
         self.assertIn("workflowStepLabel", page)
+        # Explicitly delegate media playback but keep untrusted HTML isolated.
+        self.assertIn('sandbox="allow-scripts" allow="autoplay"', page)
+        self.assertNotIn('sandbox="allow-scripts allow-same-origin"', page)
 
     def test_watermark_is_optional_from_ui_through_workflow(self):
         page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
