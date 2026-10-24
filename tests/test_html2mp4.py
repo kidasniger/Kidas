@@ -135,6 +135,10 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertNotIn("<video", patched.lower())
         self.assertNotIn("data:audio/", patched.lower())
         self.assertNotIn("AudioContext", patched)
+        for width, height in ((1920, 1080), (1080, 1080)):
+            alternate = html.replace("width:1080px;height:1920px", f"width:{width}px;height:{height}px", 1)
+            self.assertEqual(renderer.detect_profile(alternate)[0], "rendraxai")
+            self.assertEqual(renderer.choose_frame_size(alternate, "auto"), (width, height))
 
     def test_ai_generator_uses_kidas_reference_and_rejects_audio(self):
         endpoint = (ROOT / "api" / "generate-html.js").read_text(encoding="utf-8")
@@ -143,6 +147,9 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertIn("window.__rendraxSeek", endpoint)
         self.assertIn("Le HTML doit rester silencieux", endpoint)
         self.assertIn("SpeechSynthesisUtterance", endpoint)
+        self.assertIn("stageDimensions", endpoint)
+        self.assertIn("1920, height: 1080", endpoint)
+        self.assertIn("1080, height: 1080", endpoint)
 
     def test_gsap_audio_timeline_pattern_is_recognised(self):
         self.assertEqual(renderer.detect_profile(self.GSAPVIDEO)[0], "gsapvideo")
