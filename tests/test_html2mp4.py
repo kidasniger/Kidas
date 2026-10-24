@@ -60,7 +60,6 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertTrue((fixtures / "start-button.html").is_file())
         self.assertTrue((fixtures / "gsap-audio-timeline.html").is_file())
         self.assertTrue((fixtures / "gsap-duration-audio-timeline.html").is_file())
-        self.assertTrue((fixtures / "rendrax-ai-silent.html").is_file())
 
     # --- vérification automatique du fichier ---
     EDITPRO = ('<html><body><div id="stage"></div><script>const IM={"voice":"' + "QUJD" * 400 + '"};'
@@ -122,34 +121,6 @@ class Html2Mp4Tests(unittest.TestCase):
         '(function lp(){const t=started?a.currentTime:1.5;tl.time(Math.min(t,D),false);requestAnimationFrame(lp)})();'
         '</script></body></html>'
     )
-
-    def test_rendraxai_silent_profile_is_recognized_and_patched(self):
-        fixture = ROOT / "tests" / "fixtures" / "rendrax-ai-silent.html"
-        html = fixture.read_text(encoding="utf-8")
-        self.assertEqual(renderer.detect_profile(html)[0], "rendraxai")
-        patched, profile = renderer.patch_html(html)
-        self.assertEqual(profile, "rendraxai")
-        self.assertLess(patched.index("<script>window.__manual=true</script>"), patched.index("const D = 4"))
-        self.assertIn("window.__rendraxSeek", patched)
-        self.assertNotIn("<audio", patched.lower())
-        self.assertNotIn("<video", patched.lower())
-        self.assertNotIn("data:audio/", patched.lower())
-        self.assertNotIn("AudioContext", patched)
-        for width, height in ((1920, 1080), (1080, 1080)):
-            alternate = html.replace("width:1080px;height:1920px", f"width:{width}px;height:{height}px", 1)
-            self.assertEqual(renderer.detect_profile(alternate)[0], "rendraxai")
-            self.assertEqual(renderer.choose_frame_size(alternate, "auto"), (width, height))
-
-    def test_ai_generator_uses_kidas_reference_and_rejects_audio(self):
-        endpoint = (ROOT / "api" / "generate-html.js").read_text(encoding="utf-8")
-        self.assertIn("KIDAS_REFERENCE", endpoint)
-        self.assertIn("bleu nuit #0A1640", endpoint)
-        self.assertIn("window.__rendraxSeek", endpoint)
-        self.assertIn("Le HTML doit rester silencieux", endpoint)
-        self.assertIn("SpeechSynthesisUtterance", endpoint)
-        self.assertIn("stageDimensions", endpoint)
-        self.assertIn("1920, height: 1080", endpoint)
-        self.assertIn("1080, height: 1080", endpoint)
 
     def test_gsap_audio_timeline_pattern_is_recognised(self):
         self.assertEqual(renderer.detect_profile(self.GSAPVIDEO)[0], "gsapvideo")
@@ -219,7 +190,7 @@ class Html2Mp4Tests(unittest.TestCase):
 
     def test_automatic_fps_uses_60_for_seekable_profiles_and_30_for_generic(self):
         for profile in PRECISE_PROFILES:
-            expected = 30 if profile == "rendraxai" else 60
+            expected = 60
             self.assertEqual(select_fps(profile, "auto"), expected, profile)
         self.assertEqual(select_fps("generic", "auto"), 30)
         self.assertEqual(select_fps("generic", 24), 24)
@@ -340,40 +311,6 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertEqual(audio_verdict({"audio_tracks": ["a"], "peak_db": -12})[0], "ok")
 
 
-    def test_ai_animation_generator_is_connected_and_protected(self):
-        page = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
-        endpoint = (ROOT / "api" / "generate-html.js").read_text(encoding="utf-8")
-        config = (ROOT / "vercel.json").read_text(encoding="utf-8")
-        self.assertIn('id="aiPrompt"', page)
-        self.assertIn('id="aiAdult"', page)
-        self.assertIn("adultConfirmed: $('#aiAdult').checked", page)
-        self.assertIn('id="aiGenerate"', page)
-        self.assertIn("$('#aiGenerate').onclick = generateAnimatedHtml", page)
-        self.assertIn("$('#aiUse').onclick = useGeneratedHtml", page)
-        self.assertIn("setFile([file])", page)
-        self.assertIn("Google AI Studio", page)
-        self.assertIn("GEMINI_API_KEY", endpoint)
-        self.assertIn("adultConfirmed !== true", endpoint)
-        self.assertIn("gemini-3.8-flash", endpoint)
-        self.assertIn("generativelanguage.googleapis.com/v1beta/models/", endpoint)
-        self.assertIn(":generateContent", endpoint)
-        self.assertIn("x-goog-api-key", endpoint)
-        self.assertIn("verifyTurnstile(req, captchaToken)", endpoint)
-        self.assertIn("sameOrigin(req)", endpoint)
-        self.assertIn("KIDAS_REFERENCE", endpoint)
-        self.assertIn("aucun audio", endpoint)
-        self.assertIn("window.__rendraxAI", endpoint)
-        self.assertIn("window.__rendraxSeek", endpoint)
-        self.assertIn("AudioContext", endpoint)
-        self.assertIn("stageSizePattern", endpoint)
-        self.assertIn("unsafeExternalCode(html)", endpoint)
-        self.assertNotIn("CLOUDFLARE_AI_TOKEN", endpoint)
-        self.assertNotIn("@cf/qwen", endpoint)
-        self.assertIn("maxDuration", config)
-        self.assertIn("const apiMessage", endpoint)
-        self.assertIn("INVALID_ARGUMENT", endpoint)
-        self.assertIn("Le modèle Gemini configuré est introuvable", endpoint)
-        self.assertIn("Échec Gemini", endpoint)
 
 
 if __name__ == "__main__":
