@@ -729,9 +729,24 @@ $('#go').onclick = go;
 $('#cancel').onclick = cancel;
 $('#refresh').onclick = loadList;
 $('#prevBtn').onclick = () => {
-  const p = $('#prev');
-  if (p.hidden) { p.srcdoc = fileText; p.hidden = false; $('#prevBtn').textContent = 'Fermer l’aperçu'; }
-  else resetPreview();
+  const p = $('#prev'), btn = $('#prevBtn');
+  if (!p.hidden) { resetPreview(); return; }
+  // Wait until srcdoc and its blocking scripts (for example GSAP from a CDN)
+  // have loaded before making the start button clickable in the preview.
+  btn.disabled = true;
+  btn.textContent = 'Chargement de l’aperçu…';
+  let timer = 0, revealed = false;
+  const reveal = () => {
+    if (revealed) return;
+    revealed = true;
+    if (timer) clearTimeout(timer);
+    p.hidden = false;
+    btn.disabled = false;
+    btn.textContent = 'Fermer l’aperçu';
+  };
+  p.addEventListener('load', reveal, { once: true });
+  timer = window.setTimeout(reveal, 20000);
+  p.srcdoc = fileText;
 };
 const drop = $('#drop');
 ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
