@@ -669,10 +669,6 @@ async function cleanupUpload(id) {
 }
 async function go() {
   if (busy) return;
-  if (aiGenerating) {
-    $('#progCard').hidden = false;
-    return status('Attends la fin de la génération IA avant de lancer le rendu MP4.', 'err');
-  }
   const f = $('#file').files[0];
   $('#progCard').hidden = false;
   if (!securityReady) { setSteps(-1); return status(securityMessage || 'La sécurité du serveur n’est pas configurée.', 'err'); }
