@@ -9,5 +9,10 @@
       "path": "/api/cleanup-stale",
       "schedule": "17 3 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/generate-html.js": {
+      "maxDuration": 60
+    }
+  }
 }
