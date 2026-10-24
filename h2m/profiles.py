@@ -5,16 +5,6 @@ import re
 from h2m.scripts_js import GENERIC_AUDIO_CAPTURE
 
 
-def _is_rendraxai(text):
-    # Animation RENDRAX générée sans audio, pilotable image par image.
-    return (
-        bool(re.search(r"window\.__rendraxAI\s*=\s*true\b", text))
-        and bool(re.search(r"window\.__rendraxSeek\s*=", text))
-        and bool(re.search(r"\bconst\s+D\s*=\s*\d+(?:\.\d+)?", text))
-        and bool(re.search(r"[.#]stage\s*\{[^}]*?width:\s*(?:1080px;\s*height:\s*1920px|1920px;\s*height:\s*1080px|1080px;\s*height:\s*1080px)", text))
-    )
-
-
 def _is_kidas(text):
     return (
         text.count("const [t,setT]=useState(0),") == 1
@@ -79,7 +69,6 @@ def _is_gsapvideo(text):
 # _is_xxx(text), l'inscrire ici, puis prévoir son correctif dans patch_html et son audio
 # dans extract_audio / render.
 PROFILES = (
-    ("rendraxai", "RENDRAX IA (animation silencieuse pilotée par timeline)", _is_rendraxai),
     ("kidas", "KIDAS (React + audio intégré)", _is_kidas),
     ("editpro", "EditPro (canvas + voix intégrée)", _is_editpro),
     ("musicpro", "MusicPro (canvas + voix et musique Web Audio)", _is_musicpro),
