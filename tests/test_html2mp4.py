@@ -370,6 +370,10 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertNotIn("CLOUDFLARE_AI_TOKEN", endpoint)
         self.assertNotIn("@cf/qwen", endpoint)
         self.assertIn("maxDuration", config)
+        self.assertIn("const apiMessage", endpoint)
+        self.assertIn("INVALID_ARGUMENT", endpoint)
+        self.assertIn("Le modèle Gemini configuré est introuvable", endpoint)
+        self.assertIn("Échec Gemini", endpoint)
 
 
 if __name__ == "__main__":
