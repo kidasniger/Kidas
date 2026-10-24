@@ -153,7 +153,7 @@ Commence directement par <!doctype html>. Le corps doit occuper la fenêtre (100
   let html = candidate.content.parts
     .filter(part => typeof part?.text === 'string' && part.thought !== true)
     .map(part => part.text)
-    .join('\\n')
+    .join('\n')
     .trim();
   html = html.replace(/^```(?:html)?\s*/i, '').replace(/\s*```$/i, '').trim();
 
