@@ -2,7 +2,7 @@ import { readBody, sameOrigin, send, publicError, verifyTurnstile } from '../lib
 
 export const maxDuration = 60;
 
-const MODEL = process.env.CLOUDFLARE_AI_MODEL || '@cf/qwen/qwen2.5-coder-32b-instruct';
+const MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 const MAX_PROMPT_CHARS = 4000;
 const MAX_HTML_CHARS = 500000;
 const FORMATS = new Set(['portrait', 'landscape', 'square']);
@@ -44,14 +44,11 @@ function unsafeExternalCode(html) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return fail(res, 405, 'Méthode non autorisée.');
   if (!sameOrigin(req)) return fail(res, 403, 'Origine de la demande refusée.');
-  if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_AI_TOKEN) {
-    return fail(res, 503, 'Le générateur IA n’est pas encore configuré. Ajoute CLOUDFLARE_ACCOUNT_ID et CLOUDFLARE_AI_TOKEN dans les variables d’environnement de Vercel.');
+  if (!process.env.GEMINI_API_KEY) {
+    return fail(res, 503, 'Le générateur IA n’est pas encore configuré. Crée une clé dans Google AI Studio puis ajoute GEMINI_API_KEY aux variables d’environnement de Vercel.');
   }
-  if (!/^[a-f0-9]{32}$/i.test(process.env.CLOUDFLARE_ACCOUNT_ID)) {
-    return fail(res, 503, 'CLOUDFLARE_ACCOUNT_ID doit être l’identifiant de compte Cloudflare à 32 caractères hexadécimaux.');
-  }
-  if (!/^@cf\/[a-z0-9._-]+\/[a-z0-9._-]+$/i.test(MODEL)) {
-    return fail(res, 503, 'Le modèle Cloudflare Workers AI configuré est invalide.');
+  if (!/^[a-z0-9._-]{3,100}$/i.test(MODEL)) {
+    return fail(res, 503, 'Le nom du modèle Gemini configuré est invalide.');
   }
 
   const { prompt, captchaToken, style = 'modern', format = 'portrait', duration = '30' } = readBody(req);
@@ -106,22 +103,20 @@ Commence directement par <!doctype html>. Le corps doit occuper la fenêtre (100
 
   let upstream;
   try {
-    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-    const endpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${MODEL}`;
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`;
     upstream = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.CLOUDFLARE_AI_TOKEN}`
+        'x-goog-api-key': process.env.GEMINI_API_KEY
       },
       body: JSON.stringify({
-        messages: [
-          { role: 'system', content: SYSTEM_INSTRUCTION },
-          { role: 'user', content: input }
-        ],
-        max_tokens: 8192,
-        temperature: 0.65,
-        stream: false
+        systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+        contents: [{ role: 'user', parts: [{ text: input }] }],
+        generationConfig: {
+          maxOutputTokens: 12000,
+          thinkingConfig: { thinkingLevel: 'low' }
+        }
       }),
       signal: AbortSignal.timeout(45000)
     });
@@ -129,24 +124,38 @@ Commence directement par <!doctype html>. Le corps doit occuper la fenêtre (100
     const timeout = error?.name === 'TimeoutError' || error?.name === 'AbortError';
     return fail(res, timeout ? 504 : 502, timeout
       ? 'La génération prend trop de temps. Essaie un brief plus court.'
-      : 'Impossible de joindre Cloudflare Workers AI. Réessaie dans un instant.');
+      : 'Impossible de joindre Google AI Studio. Réessaie dans un instant.');
   }
 
   const responseBody = await upstream.json().catch(() => null);
-  if (!upstream.ok || responseBody?.success === false) {
-    const codes = Array.isArray(responseBody?.errors) ? responseBody.errors.map(item => String(item.code || '')).join(',') : '';
-    console.warn('[RENDRAX IA] Cloudflare Workers AI a répondu avec le statut', upstream.status, 'codes:', codes || 'inconnus');
-    if (upstream.status === 429 || codes.includes('3036')) {
-      return fail(res, 429, 'Le quota gratuit de l’IA est atteint ou le service est momentanément saturé. Réessaie plus tard.');
+  if (!upstream.ok || responseBody?.error) {
+    const apiStatus = String(responseBody?.error?.status || '');
+    console.warn('[RENDRAX IA] Gemini API a répondu avec le statut', upstream.status, 'code:', apiStatus || 'inconnu');
+    if (upstream.status === 429 || apiStatus === 'RESOURCE_EXHAUSTED') {
+      return fail(res, 429, 'Le quota gratuit de Gemini est atteint ou le service est momentanément saturé. Vérifie les limites dans Google AI Studio puis réessaie plus tard.');
     }
-    if (upstream.status === 401 || upstream.status === 403) {
-      return fail(res, 503, 'Le jeton Cloudflare est invalide ou ce modèle nécessite un forfait payant. Vérifie ton jeton, les autorisations Workers AI et les quotas.');
+    if (upstream.status === 401 || upstream.status === 403 || apiStatus === 'PERMISSION_DENIED' || apiStatus === 'UNAUTHENTICATED') {
+      return fail(res, 503, 'La clé Gemini est invalide ou le projet n’a pas accès à ce modèle. Vérifie GEMINI_API_KEY, le modèle et le quota dans Google AI Studio.');
     }
-    return fail(res, 502, 'Cloudflare Workers AI n’a pas pu produire le HTML. Réessaie avec une description plus simple.');
+    return fail(res, 502, 'Google AI Studio n’a pas pu produire le HTML. Réessaie avec une description plus simple.');
   }
 
-  let html = String(responseBody?.result?.response || responseBody?.response || '').trim();
-  html = html.replace(/^\`\`\`(?:html)?\s*/i, '').replace(/\s*\`\`\`$/i, '').trim();
+  const candidate = responseBody?.candidates?.[0];
+  if (!candidate || candidate.finishReason === 'MAX_TOKENS') {
+    return fail(res, 502, 'La réponse de Gemini est incomplète ou trop longue. Réessaie avec une scène plus simple.');
+  }
+  if (!Array.isArray(candidate.content?.parts)) {
+    const reason = responseBody?.promptFeedback?.blockReason || candidate.finishReason || 'inconnu';
+    console.warn('[RENDRAX IA] Réponse Gemini sans texte exploitable, raison:', reason);
+    return fail(res, 422, 'Gemini n’a pas renvoyé de HTML exploitable. Modifie la description puis réessaie.');
+  }
+
+  let html = candidate.content.parts
+    .filter(part => typeof part?.text === 'string' && part.thought !== true)
+    .map(part => part.text)
+    .join('\\n')
+    .trim();
+  html = html.replace(/^```(?:html)?\s*/i, '').replace(/\s*```$/i, '').trim();
 
   if (!html || html.length > MAX_HTML_CHARS || !/^(?:<!doctype\s+html|<html\b)/i.test(html)) {
     return fail(res, 502, 'L’IA n’a pas renvoyé un document HTML complet. Réessaie en simplifiant la description.');
