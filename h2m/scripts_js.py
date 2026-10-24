@@ -23,6 +23,13 @@ window.__finish = async () => {
 };
 
 window.__seek = async (t) => {
+  if (window.__profile === 'rendraxai') {
+    window.__manual = true;
+    const time = Math.max(0, Number(t) || 0);
+    await window.__rendraxSeek(time);
+    await window.__finish();
+    return 1;
+  }
   if (window.__profile === 'gsapvideo') {
     window.__manual = true;
     const time = Math.max(0, Number(t) || 0);
