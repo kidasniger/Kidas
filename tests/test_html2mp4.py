@@ -131,7 +131,10 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertEqual(profile, "rendraxai")
         self.assertLess(patched.index("<script>window.__manual=true</script>"), patched.index("const D = 4"))
         self.assertIn("window.__rendraxSeek", patched)
-        self.assertNotRegex(patched, r"<(?:audio|video)\\b|data:audio/|\\bAudioContext\\b")
+        self.assertNotIn("<audio", patched.lower())
+        self.assertNotIn("<video", patched.lower())
+        self.assertNotIn("data:audio/", patched.lower())
+        self.assertNotIn("AudioContext", patched)
 
     def test_ai_generator_uses_kidas_reference_and_rejects_audio(self):
         endpoint = (ROOT / "api" / "generate-html.js").read_text(encoding="utf-8")
