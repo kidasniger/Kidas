@@ -99,12 +99,6 @@ def patch_html(text):
     profil vaut "" si aucun mode image par image n'est possible.
     """
     profile, _ = detect_profile(text)
-    if profile == "rendraxai":
-        # Stoppe la boucle d'aperçu et laisse RENDRAX appeler render(t) pour chaque image.
-        manual = "<script>window.__manual=true</script>"
-        m = re.search(r"<head\b[^>]*>", text, flags=re.I)
-        text = text[:m.end()] + manual + text[m.end():] if m else manual + text
-        return text, "rendraxai"
     if profile == "kidas":
         # setT devient inactif en mode manuel : la boucle audio de la page ne l'écrase plus.
         a = "const [t,setT]=useState(0),"
