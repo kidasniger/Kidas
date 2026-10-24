@@ -23,9 +23,6 @@ from h2m.ui import die, fmt_time, good, info, warn
 def select_fps(profile, requested="auto"):
     """Use 60 fps for seekable/synchronized profiles and 30 for generic HTML."""
     if requested is None or str(requested).lower() == "auto":
-        # Les animations IA silencieuses sont seekables, mais 30 i/s réduit le temps de rendu.
-        if profile == "rendraxai":
-            return 30
         return 60 if profile in PRECISE_PROFILES else 30
     fps = int(requested)
     if not 1 <= fps <= 120:
@@ -102,9 +99,7 @@ def render(html_path, args):
 
         is_precise = False
         if precise_candidate:
-            if profile == "rendraxai":
-                check = "(()=>!!document.querySelector('.stage')&&typeof D==='number'&&typeof window.__rendraxSeek==='function')()"
-            elif profile == "kidas":
+            if profile == "kidas":
                 check = "(()=>!!document.querySelector('.stage')&&document.querySelectorAll('audio').length>=1&&typeof D==='number'&&typeof window.__setT==='function')()"
             elif profile == "voicevideo":
                 check = "(()=>!!document.querySelector('#stage')&&!!window.__video&&typeof window.__video.seek==='function'&&document.querySelectorAll('audio').length>=1)()"
@@ -130,7 +125,7 @@ def render(html_path, args):
             cdp.ev(f"window.__profile = {json.dumps(profile)}; 0", await_promise=False)
             cdp.ev(JS_HELPERS, await_promise=False)
             cdp.ev("window.__prep()")
-            if profile in ("kidas", "musicpro", "rendraxai"):
+            if profile in ("kidas", "musicpro"):
                 total = float(cdp.ev("D"))
             elif profile == "voicevideo":
                 total = float(cdp.ev("window.__video.duration"))
@@ -178,7 +173,7 @@ def render(html_path, args):
                         info(f"Piste {label_fr} récupérée depuis le navigateur.")
                     else:
                         warn(f"Piste {label_fr} introuvable ou non décodée par le navigateur.")
-            if not audio_inputs and profile != "rendraxai":
+            if not audio_inputs:
                 die("Aucune piste audio valide n’a été récupérée pour ce profil synchronisé. Le MP4 muet a été bloqué.")
 
             cdp.ev("window.__seek(0)")
@@ -186,7 +181,7 @@ def render(html_path, args):
             if abs(r[2] - W) > 2 or abs(r[3] - H) > 2:
                 warn(f"La scène mesure {r[2]:.0f}×{r[3]:.0f} au lieu de {W}×{H} : rendu possiblement flou.")
             clip = {"x": round(r[0]), "y": round(r[1]), "width": W, "height": H, "scale": args.scale}
-            mode = "timeline silencieuse" if profile == "rendraxai" else "synchronisé"
+            mode = "synchronisé"
         else:
             # Mode générique : la page n'a besoin ni de .stage, ni de D, ni d'AUD/MUS.
             if args.duration > 0:
