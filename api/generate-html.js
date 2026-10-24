@@ -51,7 +51,10 @@ export default async function handler(req, res) {
     return fail(res, 503, 'Le nom du modèle Gemini configuré est invalide.');
   }
 
-  const { prompt, captchaToken, style = 'modern', format = 'portrait', duration = '30' } = readBody(req);
+  const { prompt, captchaToken, adultConfirmed, style = 'modern', format = 'portrait', duration = '30' } = readBody(req);
+  if (adultConfirmed !== true) {
+    return fail(res, 403, 'Confirme que tu as 18 ans ou plus et que tu utilises Gemini pour un usage professionnel ou commercial.');
+  }
   const brief = typeof prompt === 'string' ? prompt.trim() : '';
   if (brief.length < 5 || brief.length > MAX_PROMPT_CHARS) {
     return fail(res, 400, 'Décris l’animation en 5 à 4 000 caractères.');
