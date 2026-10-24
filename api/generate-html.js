@@ -148,13 +148,13 @@ Commence directement par <!doctype html>. Le corps doit occuper la fenêtre (100
     return fail(res, 422, 'Le HTML généré contient une ressource ou un appel réseau externe. Réessaie avec une animation entièrement autonome.');
   }
 
-  if (/<(?:audio|video)\\b|data:audio\\/|\\b(?:AudioContext|webkitAudioContext|SpeechSynthesisUtterance|speechSynthesis|MediaRecorder)\\b|\\b(?:createOscillator|createBufferSource|createMediaElementSource|decodeAudioData)\\s*\\(|\\bnew\\s+Audio\\s*\\(/i.test(html)) {
+  if (/<(?:audio|video)\b|data:audio\/|\b(?:AudioContext|webkitAudioContext|SpeechSynthesisUtterance|speechSynthesis|MediaRecorder)\b|\b(?:createOscillator|createBufferSource|createMediaElementSource|decodeAudioData)\s*\(|\bnew\s+Audio\s*\(/i.test(html)) {
     return fail(res, 422, 'Le HTML doit rester silencieux : aucun audio, voix, musique ou effet sonore. Réessaie.');
   }
-  if (!/window\\.__rendraxAI\\s*=\\s*true\\b/.test(html) ||
-      !/window\\.__rendraxSeek\\s*=/.test(html) ||
-      !/\\bconst\\s+D\\s*=\\s*\\d+(?:\\.\\d+)?/.test(html) ||
-      !/[.#]stage\\s*\\{[^}]*?width:\\s*1080px;\\s*height:\\s*1920px/.test(html)) {
+  if (!/window\.__rendraxAI\s*=\s*true\b/.test(html) ||
+      !/window\.__rendraxSeek\s*=/.test(html) ||
+      !/\bconst\s+D\s*=\s*\d+(?:\.\d+)?/.test(html) ||
+      !/[.#]stage\s*\{[^}]*?width:\s*1080px;\s*height:\s*1920px/.test(html)) {
     return fail(res, 422, 'Le HTML doit respecter le modèle silencieux RENDRAX : scène .stage 1080×1920, durée D et window.__rendraxSeek(t). Réessaie.');
   }
 
