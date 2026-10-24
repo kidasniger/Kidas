@@ -239,15 +239,50 @@ ul#list button{box-shadow:none}
   *,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
 }
 </style>
+<link rel="stylesheet" href="/assets/rendrax-redesign.css">
+<script type="importmap">
+{"imports":{"react":"https://esm.sh/react@18.3.1","react-dom/client":"https://esm.sh/react-dom@18.3.1/client?external=react"}}
+</script>
+<script>
+(function(){
+  var done = function(){ document.documentElement.classList.add('rdx-ready'); };
+  if (document.readyState === 'complete') setTimeout(done, 900);
+  else window.addEventListener('load', function(){ setTimeout(done, 900); }, { once:true });
+  setTimeout(done, 2400);
+})();
+</script>
 </head>
 <body>
-<main>
-  <header class="top">
-    <div class="brand"><img class="brand-logo" src="/assets/rendrax-logo.svg" alt="RENDRAX" width="520" height="120"></div>
-    <h1 aria-label="HTML vers MP4">HTML <span aria-hidden="true">→</span> MP4</h1>
+<div id="rdx-splash" class="rdx-splash" aria-hidden="true">
+  <div class="rdx-splash-inner">
+    <div class="rdx-splash-mark"><img src="/assets/rendrax-icon.svg" alt=""></div>
+    <img class="rdx-splash-logo" src="/assets/rendrax-logo.svg" alt="RENDRAX">
+    <p class="rdx-splash-caption">Préparation de ton espace de rendu</p>
+    <div class="rdx-splash-progress"><span></span></div>
+  </div>
+</div>
+<main class="rdx-main">
+  <header class="top rdx-hero">
+    <div class="rdx-hero-copy">
+      <div class="brand"><img class="brand-logo" src="/assets/rendrax-logo.svg" alt="RENDRAX" width="520" height="120"></div>
+      <p class="rdx-eyebrow"><span class="rdx-live-dot" aria-hidden="true"></span> ATELIER DE RENDU · EN LIGNE</p>
+      <h1 aria-label="HTML vers MP4">Le mouvement devient <span>vidéo.</span></h1>
+      <p class="sub">Transforme tes animations HTML en vidéos MP4, avec un rendu image par image et le son synchronisé.</p>
+      <div class="rdx-hero-meta" aria-label="Points clés">
+        <span>HTML vers MP4</span>
+        <span>Rendu sécurisé</span>
+        <span>Prêt à partager</span>
+      </div>
+    </div>
+    <div class="rdx-hero-visual" aria-label="Illustration animée de conversion HTML vers MP4">
+      <div class="rdx-visual-fallback" aria-hidden="true">
+        <div class="rdx-fallback-window"><span></span><span></span><span></span><span></span></div>
+      </div>
+      <div id="rdx-react-visual" aria-hidden="true"></div>
+    </div>
   </header>
 
-  <section class="card" aria-labelledby="h-file">
+  <section id="fileCard" class="card rdx-file-card" aria-labelledby="h-file">
     <div class="head"><span class="num" aria-hidden="true">01</span><h2 id="h-file">Ton fichier HTML</h2></div>
     <label class="drop" id="drop">
       <span class="ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg></span>
@@ -261,7 +296,7 @@ ul#list button{box-shadow:none}
     <iframe id="prev" title="Aperçu du fichier HTML" sandbox="allow-scripts" allow="autoplay" hidden></iframe>
   </section>
 
-  <section class="card" aria-labelledby="h-set">
+  <section id="settingsCard" class="card rdx-settings-card" aria-labelledby="h-set">
     <div class="head"><span class="num" aria-hidden="true">02</span><h2 id="h-set">Réglages</h2></div>
     <div class="grid">
       <div class="field">
@@ -758,5 +793,6 @@ loadList();
 initSecurity();
 resume();
 </script>
+<script type="module" src="/assets/rendrax-motion.js"></script>
 </body>
 </html>
