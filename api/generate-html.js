@@ -161,7 +161,7 @@ Commence directement par <!doctype html>. Le corps doit occuper la fenêtre (100
   if (!/window\.__rendraxAI\s*=\s*true\b/.test(html) ||
       !/window\.__rendraxSeek\s*=/.test(html) ||
       !/\bconst\s+D\s*=\s*\d+(?:\.\d+)?/.test(html) ||
-      !stageSizePattern) {
+      !stageSizePattern.test(html)) {
     return fail(res, 422, 'Le HTML doit respecter le modèle silencieux RENDRAX : dimensions de .stage conformes au format, durée D et window.__rendraxSeek(t). Réessaie.');
   }
 
