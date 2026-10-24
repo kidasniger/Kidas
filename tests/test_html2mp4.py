@@ -60,6 +60,7 @@ class Html2Mp4Tests(unittest.TestCase):
         self.assertTrue((fixtures / "start-button.html").is_file())
         self.assertTrue((fixtures / "gsap-audio-timeline.html").is_file())
         self.assertTrue((fixtures / "gsap-duration-audio-timeline.html").is_file())
+        self.assertTrue((fixtures / "rendrax-ai-silent.html").is_file())
 
     # --- vérification automatique du fichier ---
     EDITPRO = ('<html><body><div id="stage"></div><script>const IM={"voice":"' + "QUJD" * 400 + '"};'
@@ -121,6 +122,24 @@ class Html2Mp4Tests(unittest.TestCase):
         '(function lp(){const t=started?a.currentTime:1.5;tl.time(Math.min(t,D),false);requestAnimationFrame(lp)})();'
         '</script></body></html>'
     )
+
+    def test_rendraxai_silent_profile_is_recognized_and_patched(self):
+        fixture = ROOT / "tests" / "fixtures" / "rendrax-ai-silent.html"
+        html = fixture.read_text(encoding="utf-8")
+        self.assertEqual(renderer.detect_profile(html)[0], "rendraxai")
+        patched, profile = renderer.patch_html(html)
+        self.assertEqual(profile, "rendraxai")
+        self.assertLess(patched.index("<script>window.__manual=true</script>"), patched.index("const D = 4"))
+        self.assertIn("window.__rendraxSeek", patched)
+        self.assertNotRegex(patched, r"<(?:audio|video)\\b|data:audio/|\\bAudioContext\\b")
+
+    def test_ai_generator_uses_kidas_reference_and_rejects_audio(self):
+        endpoint = (ROOT / "api" / "generate-html.js").read_text(encoding="utf-8")
+        self.assertIn("KIDAS_REFERENCE", endpoint)
+        self.assertIn("bleu nuit #0A1640", endpoint)
+        self.assertIn("window.__rendraxSeek", endpoint)
+        self.assertIn("Le HTML doit rester silencieux", endpoint)
+        self.assertIn("SpeechSynthesisUtterance", endpoint)
 
     def test_gsap_audio_timeline_pattern_is_recognised(self):
         self.assertEqual(renderer.detect_profile(self.GSAPVIDEO)[0], "gsapvideo")
@@ -190,7 +209,8 @@ class Html2Mp4Tests(unittest.TestCase):
 
     def test_automatic_fps_uses_60_for_seekable_profiles_and_30_for_generic(self):
         for profile in PRECISE_PROFILES:
-            self.assertEqual(select_fps(profile, "auto"), 60, profile)
+            expected = 30 if profile == "rendraxai" else 60
+            self.assertEqual(select_fps(profile, "auto"), expected, profile)
         self.assertEqual(select_fps("generic", "auto"), 30)
         self.assertEqual(select_fps("generic", 24), 24)
         self.assertEqual(select_fps("gsapvideo", 24), 24)
