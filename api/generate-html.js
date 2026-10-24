@@ -1,18 +1,13 @@
-import { readBody, sameOrigin, send, verifyTurnstile } from '../lib/kidas-server.js';
+import { readBody, sameOrigin, send, publicError, verifyTurnstile } from '../lib/kidas-server.js';
 
 export const maxDuration = 60;
 
-const MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+const MODEL = process.env.CLOUDFLARE_AI_MODEL || '@cf/qwen/qwen2.5-coder-32b-instruct';
 const MAX_PROMPT_CHARS = 4000;
 const MAX_HTML_CHARS = 500000;
 const FORMATS = new Set(['portrait', 'landscape', 'square']);
 const DURATIONS = new Set(['10', '30', '60']);
 const STYLES = new Set(['modern', 'cinematic', 'educational', 'minimal']);
-const RESTRICTED_COUNTRIES = new Set([
-  'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR',
-  'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK',
-  'SI', 'ES', 'SE', 'IS', 'LI', 'NO', 'GB', 'CH'
-]);
 
 const SYSTEM_INSTRUCTION = `
 Tu es le moteur de création HTML animé de RENDRAX. Produis un seul document HTML complet, autonome et immédiatement animable, à convertir ensuite en MP4.
@@ -35,17 +30,6 @@ function fail(res, status, error) {
   return send(res, status, { error });
 }
 
-function outputText(interaction) {
-  if (typeof interaction?.output_text === 'string') return interaction.output_text;
-  const steps = Array.isArray(interaction?.steps) ? interaction.steps : [];
-  return steps
-    .filter(step => step?.type === 'model_output' && Array.isArray(step.content))
-    .flatMap(step => step.content)
-    .filter(part => part?.type === 'text' && typeof part.text === 'string')
-    .map(part => part.text)
-    .join('\n');
-}
-
 function unsafeExternalCode(html) {
   return /<script\b[^>]*\bsrc\s*=|<iframe\b|<link\b[^>]*\bhref\s*=\s*["']https?:|\b(?:src|href)\s*=\s*["']\s*https?:|url\(\s*["']?https?:|@import\b|\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\bsendBeacon\s*\(|\beval\s*\(|\bnew\s+Function\s*\(/i.test(html);
 }
@@ -53,18 +37,17 @@ function unsafeExternalCode(html) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return fail(res, 405, 'Méthode non autorisée.');
   if (!sameOrigin(req)) return fail(res, 403, 'Origine de la demande refusée.');
-  const country = String(req.headers['x-vercel-ip-country'] || '').toUpperCase();
-  if (RESTRICTED_COUNTRIES.has(country)) {
-    return fail(res, 403, 'Le palier gratuit de Gemini ne peut pas être proposé ici. L’offre payante du fournisseur est nécessaire dans cette région.');
+  if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_AI_TOKEN) {
+    return fail(res, 503, 'Le générateur IA n’est pas encore configuré. Ajoute CLOUDFLARE_ACCOUNT_ID et CLOUDFLARE_AI_TOKEN dans les variables d’environnement de Vercel.');
   }
-  if (!process.env.GEMINI_API_KEY) {
-    return fail(res, 503, 'Le générateur IA n’est pas encore configuré. Ajoute GEMINI_API_KEY dans les variables d’environnement de Vercel.');
+  if (!/^[a-f0-9]{32}$/i.test(process.env.CLOUDFLARE_ACCOUNT_ID)) {
+    return fail(res, 503, 'CLOUDFLARE_ACCOUNT_ID doit être l’identifiant de compte Cloudflare à 32 caractères hexadécimaux.');
+  }
+  if (!/^@cf\/[a-z0-9._-]+\/[a-z0-9._-]+$/i.test(MODEL)) {
+    return fail(res, 503, 'Le modèle Cloudflare Workers AI configuré est invalide.');
   }
 
-  const { prompt, captchaToken, adultConfirmed, style = 'modern', format = 'portrait', duration = '30' } = readBody(req);
-  if (adultConfirmed !== true) {
-    return fail(res, 403, 'Confirme que tu as 18 ans ou plus pour utiliser le générateur IA.');
-  }
+  const { prompt, captchaToken, style = 'modern', format = 'portrait', duration = '30' } = readBody(req);
   const brief = typeof prompt === 'string' ? prompt.trim() : '';
   if (brief.length < 5 || brief.length > MAX_PROMPT_CHARS) {
     return fail(res, 400, 'Décris l’animation en 5 à 4 000 caractères.');
@@ -76,7 +59,8 @@ export default async function handler(req, res) {
   try {
     await verifyTurnstile(req, captchaToken);
   } catch (error) {
-    return fail(res, Number(error?.status) || 403, error?.message || 'La vérification anti-robot a échoué.');
+    const result = publicError(error);
+    return send(res, result.status, result.body);
   }
 
   const formatLabel = {
@@ -105,21 +89,22 @@ Commence directement par <!doctype html>. Le corps doit occuper la fenêtre (100
 
   let upstream;
   try {
-    upstream = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const endpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${MODEL}`;
+    upstream = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-goog-api-key': process.env.GEMINI_API_KEY
+        Authorization: `Bearer ${process.env.CLOUDFLARE_AI_TOKEN}`
       },
       body: JSON.stringify({
-        model: MODEL,
-        system_instruction: SYSTEM_INSTRUCTION,
-        input,
-        store: false,
-        generation_config: {
-          max_output_tokens: 12000,
-          thinking_level: 'low'
-        }
+        messages: [
+          { role: 'system', content: SYSTEM_INSTRUCTION },
+          { role: 'user', content: input }
+        ],
+        max_tokens: 8192,
+        temperature: 0.65,
+        stream: false
       }),
       signal: AbortSignal.timeout(45000)
     });
@@ -127,22 +112,23 @@ Commence directement par <!doctype html>. Le corps doit occuper la fenêtre (100
     const timeout = error?.name === 'TimeoutError' || error?.name === 'AbortError';
     return fail(res, timeout ? 504 : 502, timeout
       ? 'La génération prend trop de temps. Essaie un brief plus court.'
-      : 'Impossible de joindre le service IA. Réessaie dans un instant.');
+      : 'Impossible de joindre Cloudflare Workers AI. Réessaie dans un instant.');
   }
 
-  if (!upstream.ok) {
-    console.warn('[RENDRAX IA] Gemini a répondu avec le statut', upstream.status);
-    if (upstream.status === 429) {
-      return fail(res, 429, 'Le quota gratuit de l’IA est temporairement atteint. Attends un peu avant de réessayer.');
+  const responseBody = await upstream.json().catch(() => null);
+  if (!upstream.ok || responseBody?.success === false) {
+    const codes = Array.isArray(responseBody?.errors) ? responseBody.errors.map(item => String(item.code || '')).join(',') : '';
+    console.warn('[RENDRAX IA] Cloudflare Workers AI a répondu avec le statut', upstream.status, 'codes:', codes || 'inconnus');
+    if (upstream.status === 429 || codes.includes('3036')) {
+      return fail(res, 429, 'Le quota gratuit de l’IA est atteint ou le service est momentanément saturé. Réessaie plus tard.');
     }
     if (upstream.status === 401 || upstream.status === 403) {
-      return fail(res, 503, 'La clé Gemini est invalide ou ce projet n’a pas accès à ce modèle. Vérifie la clé et le quota gratuit dans Google AI Studio.');
+      return fail(res, 503, 'Le jeton Cloudflare est invalide ou ce modèle nécessite un forfait payant. Vérifie ton jeton, les autorisations Workers AI et les quotas.');
     }
-    return fail(res, 502, 'Le service IA n’a pas pu produire le HTML. Réessaie avec une description plus simple.');
+    return fail(res, 502, 'Cloudflare Workers AI n’a pas pu produire le HTML. Réessaie avec une description plus simple.');
   }
 
-  const interaction = await upstream.json().catch(() => null);
-  let html = outputText(interaction).trim();
+  let html = String(responseBody?.result?.response || responseBody?.response || '').trim();
   html = html.replace(/^\`\`\`(?:html)?\s*/i, '').replace(/\s*\`\`\`$/i, '').trim();
 
   if (!html || html.length > MAX_HTML_CHARS || !/^(?:<!doctype\s+html|<html\b)/i.test(html)) {
