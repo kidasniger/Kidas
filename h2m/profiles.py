@@ -5,6 +5,16 @@ import re
 from h2m.scripts_js import GENERIC_AUDIO_CAPTURE
 
 
+def _is_rendraxai(text):
+    # Animation RENDRAX générée sans audio, pilotable image par image.
+    return (
+        bool(re.search(r"window\\.__rendraxAI\\s*=\\s*true\\b", text))
+        and bool(re.search(r"window\\.__rendraxSeek\\s*=", text))
+        and bool(re.search(r"\\bconst\\s+D\\s*=\\s*\\d+(?:\\.\\d+)?", text))
+        and bool(re.search(r"[.#]stage\\s*\\{[^}]*?width:\\s*1080px;\\s*height:\\s*1920px", text))
+    )
+
+
 def _is_kidas(text):
     return (
         text.count("const [t,setT]=useState(0),") == 1
@@ -69,6 +79,7 @@ def _is_gsapvideo(text):
 # _is_xxx(text), l'inscrire ici, puis prévoir son correctif dans patch_html et son audio
 # dans extract_audio / render.
 PROFILES = (
+    ("rendraxai", "RENDRAX IA (animation silencieuse pilotée par timeline)", _is_rendraxai),
     ("kidas", "KIDAS (React + audio intégré)", _is_kidas),
     ("editpro", "EditPro (canvas + voix intégrée)", _is_editpro),
     ("musicpro", "MusicPro (canvas + voix et musique Web Audio)", _is_musicpro),
@@ -99,6 +110,12 @@ def patch_html(text):
     profil vaut "" si aucun mode image par image n'est possible.
     """
     profile, _ = detect_profile(text)
+    if profile == "rendraxai":
+        # Stoppe la boucle d'aperçu et laisse RENDRAX appeler render(t) pour chaque image.
+        manual = "<script>window.__manual=true</script>"
+        m = re.search(r"<head\\b[^>]*>", text, flags=re.I)
+        text = text[:m.end()] + manual + text[m.end():] if m else manual + text
+        return text, "rendraxai"
     if profile == "kidas":
         # setT devient inactif en mode manuel : la boucle audio de la page ne l'écrase plus.
         a = "const [t,setT]=useState(0),"
