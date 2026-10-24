@@ -11,7 +11,7 @@ def _is_rendraxai(text):
         bool(re.search(r"window\.__rendraxAI\s*=\s*true\b", text))
         and bool(re.search(r"window\.__rendraxSeek\s*=", text))
         and bool(re.search(r"\bconst\s+D\s*=\s*\d+(?:\.\d+)?", text))
-        and bool(re.search(r"[.#]stage\s*\{[^}]*?width:\s*1080px;\s*height:\s*1920px", text))
+        and bool(re.search(r"[.#]stage\s*\{[^}]*?width:\s*(?:1080px;\s*height:\s*1920px|1920px;\s*height:\s*1080px|1080px;\s*height:\s*1080px)", text))
     )
 
 
