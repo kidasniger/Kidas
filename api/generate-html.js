@@ -8,6 +8,11 @@ const MAX_HTML_CHARS = 500000;
 const FORMATS = new Set(['portrait', 'landscape', 'square']);
 const DURATIONS = new Set(['10', '30', '60']);
 const STYLES = new Set(['modern', 'cinematic', 'educational', 'minimal']);
+const RESTRICTED_COUNTRIES = new Set([
+  'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR',
+  'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK',
+  'SI', 'ES', 'SE', 'IS', 'LI', 'NO', 'GB', 'CH'
+]);
 
 const SYSTEM_INSTRUCTION = `
 Tu es le moteur de création HTML animé de RENDRAX. Produis un seul document HTML complet, autonome et immédiatement animable, à convertir ensuite en MP4.
@@ -48,11 +53,18 @@ function unsafeExternalCode(html) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return fail(res, 405, 'Méthode non autorisée.');
   if (!sameOrigin(req)) return fail(res, 403, 'Origine de la demande refusée.');
+  const country = String(req.headers['x-vercel-ip-country'] || '').toUpperCase();
+  if (RESTRICTED_COUNTRIES.has(country)) {
+    return fail(res, 403, 'Le palier gratuit de Gemini ne peut pas être proposé ici. L’offre payante du fournisseur est nécessaire dans cette région.');
+  }
   if (!process.env.GEMINI_API_KEY) {
     return fail(res, 503, 'Le générateur IA n’est pas encore configuré. Ajoute GEMINI_API_KEY dans les variables d’environnement de Vercel.');
   }
 
-  const { prompt, captchaToken, style = 'modern', format = 'portrait', duration = '30' } = readBody(req);
+  const { prompt, captchaToken, adultConfirmed, style = 'modern', format = 'portrait', duration = '30' } = readBody(req);
+  if (adultConfirmed !== true) {
+    return fail(res, 403, 'Confirme que tu as 18 ans ou plus pour utiliser le générateur IA.');
+  }
   const brief = typeof prompt === 'string' ? prompt.trim() : '';
   if (brief.length < 5 || brief.length > MAX_PROMPT_CHARS) {
     return fail(res, 400, 'Décris l’animation en 5 à 4 000 caractères.');
