@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Exemple RENDRAX IA silencieux</title>
+<style>
+:root{--bg:#0A1640;--bg2:#070F2E;--blue:#2B59FF;--yel:#FFC932;--cor:#FF6A5B;--wh:#F4F6FF;--mut:#9AA7D6}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:system-ui,sans-serif}
+.view{width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.stage{width:1080px;height:1920px;position:relative;overflow:hidden;flex:none;background:var(--bg);color:var(--wh)}
+.mark{position:absolute;left:70px;top:80px;display:flex;gap:18px;align-items:center;font-size:40px;font-weight:800;letter-spacing:.04em}
+.mark i{width:60px;height:60px;border-radius:16px;background:var(--yel);color:var(--bg);display:flex;align-items:center;justify-content:center;font-style:normal}
+.chapter{position:absolute;right:70px;top:100px;font-size:30px;color:var(--mut);font-weight:700}
+.headline{position:absolute;left:70px;right:70px;top:650px;font-size:124px;line-height:1.02;font-weight:850;letter-spacing:-.055em;overflow-wrap:anywhere}
+.sub{position:absolute;left:78px;right:80px;top:1040px;font-size:48px;line-height:1.25;color:var(--mut);font-weight:600}
+.halo{position:absolute;width:390px;height:390px;left:340px;top:180px;border-radius:50%;background:var(--blue);box-shadow:0 0 100px #2B59FF77}
+.orbit{position:absolute;width:570px;height:210px;left:255px;top:275px;border:8px solid var(--yel);border-radius:50%;transform:rotate(-20deg)}
+.blip{position:absolute;width:75px;height:75px;right:160px;top:430px;background:var(--cor);border-radius:50%}
+.segmentbar{position:absolute;left:70px;right:70px;bottom:60px;display:flex;gap:8px}
+.segmentbar span{flex:1;height:8px;border-radius:4px;background:#26357F;overflow:hidden}
+.segmentbar span i{display:block;height:100%;width:0;background:var(--yel)}
+</style>
+</head>
+<body>
+<div class="view">
+  <div class="stage">
+    <div class="mark"><i>R</i> RENDRAX</div>
+    <div class="chapter" id="chapter">01 / INTRO</div>
+    <div class="halo" id="halo"></div><div class="orbit" id="orbit"></div><div class="blip" id="blip"></div>
+    <div class="headline" id="headline">Une idée<br>prend forme.</div>
+    <div class="sub" id="sub">Scènes claires. Mouvements précis. Une image à la fois.</div>
+    <div class="segmentbar"><span><i id="p0"></i></span><span><i id="p1"></i></span><span><i id="p2"></i></span></div>
+  </div>
+</div>
+<script>
+const D = 4;
+window.__rendraxAI = true;
+const C = x => Math.min(1, Math.max(0, x));
+const X = x => 1 - Math.pow(1 - C(x), 4);
+const B = x => { x = C(x); return 1 + 2.70158*Math.pow(x-1,3) + 1.70158*Math.pow(x-1,2); };
+const title = document.querySelector('#headline');
+const sub = document.querySelector('#sub');
+const halo = document.querySelector('#halo');
+const orbit = document.querySelector('#orbit');
+const blip = document.querySelector('#blip');
+const chapter = document.querySelector('#chapter');
+const bars = [document.querySelector('#p0'),document.querySelector('#p1'),document.querySelector('#p2')];
+function render(t) {
+  t = Math.min(D, Math.max(0, Number(t)||0));
+  const a = X((t-.15)/.7);
+  const b = X((t-1.2)/.6);
+  const c = X((t-2.3)/.5);
+  const ending = X((t-3.2)/.55);
+  halo.style.transform = 'scale(' + (.35 + .85*B((t-.1)/.8)) + ')';
+  halo.style.left = (80 + 260*X(t/3.5)) + 'px';
+  orbit.style.transform = 'rotate(' + (-20 + 38*X(t/3.8)) + 'deg) scale(' + (.6+.45*a) + ')';
+  blip.style.transform = 'translate(' + (-180+180*b) + 'px,' + (100-260*c) + 'px) scale(' + (.2+.8*c) + ')';
+  title.style.opacity = String(a);
+  title.style.transform = 'translateY(' + (65*(1-a)-12*ending) + 'px) scale(' + (.94+.06*a) + ')';
+  sub.style.opacity = String(b);
+  sub.style.transform = 'translateY(' + (45*(1-b)) + 'px)';
+  chapter.textContent = t < 1.2 ? '01 / INTRO' : t < 2.6 ? '02 / MOUVEMENT' : '03 / CONCLUSION';
+  bars.forEach((bar,i) => {
+    const starts = [0,1.25,2.65];
+    const ends = [1.25,2.65,D];
+    bar.style.width = (100*C((t-starts[i])/(ends[i]-starts[i]))) + '%';
+  });
+}
+window.__rendraxSeek = t => { render(t); return Promise.resolve(1); };
+const start = performance.now();
+function frame(now) {
+  if (window.__manual) return;
+  const t = Math.min(D, (now-start)/1000);
+  render(t);
+  if (t < D) requestAnimationFrame(frame);
+}
+render(0);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
