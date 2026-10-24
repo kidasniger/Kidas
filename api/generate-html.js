@@ -19,7 +19,7 @@ Contraintes obligatoires :
 - Utilise CSS, SVG intégré et JavaScript natif uniquement. Aucun CDN, aucune bibliothèque distante, aucune image, police ou ressource réseau externe.
 - Aucun son : n'inclus pas de balise audio ou vidéo, de données data:audio, de voix, de musique, d'effets sonores, d'AudioContext, de speechSynthesis, d'API audio ni de bouton de lecture sonore. L'animation finale doit être silencieuse.
 - Prends kidas.html comme exemple réel : reprends sa palette, sa scène verticale, sa timeline par scènes, ses easing, ses compositions typographiques et sa barre de progression segmentée, sans recopier son contenu personnel.
-- Contrat technique obligatoire : const D = durée totale en secondes; scène .stage avec width:1080px et height:1920px; window.__rendraxAI = true; fonction render(t) idempotente; window.__rendraxSeek = t => render(t) avec clamp de t entre 0 et D.
+- Contrat technique obligatoire : const D = durée totale en secondes; scène .stage avec les dimensions exactes indiquées dans le brief; window.__rendraxAI = true; fonction render(t) idempotente; window.__rendraxSeek = t => render(t) avec clamp de t entre 0 et D.
 - Pour l'aperçu, utilise requestAnimationFrame et performance.now() pour calculer t puis appeler render(t). Si window.__manual vaut true, arrête immédiatement cette boucle. RENDRAX insère window.__manual=true avant tes scripts puis demande chaque image via window.__rendraxSeek(t). Aucun temps ne doit dépendre du son.
 - La même valeur t doit toujours produire la même image. La scène doit se jouer sans clic et garder sa dernière image lorsque t atteint D. N'utilise pas de valeur aléatoire pendant render(t).
 - N'utilise ni fetch, ni XMLHttpRequest, ni WebSocket, ni sendBeacon, ni iframe, ni import dynamique, ni eval, ni Function.
@@ -81,6 +81,12 @@ export default async function handler(req, res) {
     educational: 'pédagogique, très lisible et structuré',
     minimal: 'minimaliste, épuré et précis'
   }[style];
+  const stageDimensions = {
+    portrait: { width: 1080, height: 1920 },
+    landscape: { width: 1920, height: 1080 },
+    square: { width: 1080, height: 1080 }
+  }[format];
+  const stageSizePattern = new RegExp('[.#]stage\\s*\\{[^}]*?width:\\s*' + stageDimensions.width + 'px;\\s*height:\\s*' + stageDimensions.height + 'px');
 
   const input = `
 Référence visuelle à suivre depuis le vrai fichier kidas.html :
@@ -88,6 +94,7 @@ ${KIDAS_REFERENCE}
 
 Crée une nouvelle animation silencieuse d'une durée cible de ${duration} secondes.
 Format de scène : ${formatLabel}.
+Dimensions exactes obligatoires de .stage : width:${stageDimensions.width}px; height:${stageDimensions.height}px.
 Direction artistique : ${styleLabel}.
 Brief à illustrer :
 <brief_utilisateur>
@@ -154,8 +161,8 @@ Commence directement par <!doctype html>. Le corps doit occuper la fenêtre (100
   if (!/window\.__rendraxAI\s*=\s*true\b/.test(html) ||
       !/window\.__rendraxSeek\s*=/.test(html) ||
       !/\bconst\s+D\s*=\s*\d+(?:\.\d+)?/.test(html) ||
-      !/[.#]stage\s*\{[^}]*?width:\s*1080px;\s*height:\s*1920px/.test(html)) {
-    return fail(res, 422, 'Le HTML doit respecter le modèle silencieux RENDRAX : scène .stage 1080×1920, durée D et window.__rendraxSeek(t). Réessaie.');
+      !stageSizePattern) {
+    return fail(res, 422, 'Le HTML doit respecter le modèle silencieux RENDRAX : dimensions de .stage conformes au format, durée D et window.__rendraxSeek(t). Réessaie.');
   }
 
   return send(res, 200, { html, model: MODEL });
