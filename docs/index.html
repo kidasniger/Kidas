@@ -600,7 +600,7 @@ function setFile(files) {
   const dt = new DataTransfer(); dt.items.add(files[0]); $('#file').files = dt.files;
   checkFile();
 }
-let aiGeneratedHtml = '', aiDownloadUrl = '', aiGeneratedFormat = 'portrait', aiGeneratedDuration = '30';
+let aiGenerating = false, aiGeneratedHtml = '', aiDownloadUrl = '', aiGeneratedFormat = 'portrait', aiGeneratedDuration = '30';
 function setAiStatus(message, kind) {
   const el = $('#aiStatus');
   el.hidden = !message;
@@ -608,13 +608,14 @@ function setAiStatus(message, kind) {
   el.className = kind || '';
 }
 async function generateAnimatedHtml() {
-  if (busy) return setAiStatus('Attends la fin du rendu MP4 avant de lancer une nouvelle génération.', 'err');
+  if (busy || aiGenerating) return setAiStatus('Attends la fin du rendu ou de la génération en cours.', 'err');
   const prompt = $('#aiPrompt').value.trim();
   if (prompt.length < 5) return setAiStatus('Décris l’animation en quelques mots (5 caractères minimum).', 'err');
   if (prompt.length > 4000) return setAiStatus('La description est trop longue (4 000 caractères maximum).', 'err');
   if (!securityReady) return setAiStatus(securityMessage || 'La protection anti-robot n’est pas disponible. Réessaie plus tard.', 'err');
 
   const button = $('#aiGenerate');
+  aiGenerating = true;
   button.disabled = true;
   button.textContent = 'Création du HTML…';
   $('#aiActions').hidden = true;
@@ -649,6 +650,7 @@ async function generateAnimatedHtml() {
   } catch (error) {
     setAiStatus(error.message || 'La génération a échoué. Réessaie avec une description plus simple.', 'err');
   } finally {
+    aiGenerating = false;
     button.disabled = false;
     button.textContent = 'Générer l’HTML animé';
   }
@@ -797,6 +799,10 @@ async function cleanupUpload(id) {
 }
 async function go() {
   if (busy) return;
+  if (aiGenerating) {
+    $('#progCard').hidden = false;
+    return status('Attends la fin de la génération IA avant de lancer le rendu MP4.', 'err');
+  }
   const f = $('#file').files[0];
   $('#progCard').hidden = false;
   if (!securityReady) { setSteps(-1); return status(securityMessage || 'La sécurité du serveur n’est pas configurée.', 'err'); }
