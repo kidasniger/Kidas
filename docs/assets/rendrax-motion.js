@@ -8,6 +8,7 @@ function MotionVisual() {
   const [phase, setPhase] = useState(0);
 
   useEffect(() => {
+    document.documentElement.classList.add("rdx-motion-ready");
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduced) return undefined;
     const timer = window.setInterval(() => setPhase(value => (value + 1) % 4), 2200);
@@ -74,7 +75,6 @@ const mount = document.getElementById("rdx-react-visual");
 if (mount) {
   try {
     createRoot(mount).render(h(MotionVisual));
-    document.documentElement.classList.add("rdx-motion-ready");
   } catch (error) {
     console.error("RENDRAX motion UI failed to mount", error);
   }
