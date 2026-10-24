@@ -299,9 +299,8 @@ ul#list button{box-shadow:none}
       </div>
     </div>
     <p id="aiHelp" class="ai-note">L’IA crée un fichier HTML autonome, sans bibliothèque ni ressource distante. Décris la scène, les textes à afficher, les couleurs et les mouvements souhaités.</p>
-    <label class="checkline" for="aiAdult"><input id="aiAdult" type="checkbox"><span>Je confirme avoir 18 ans ou plus et accepte les règles d’utilisation de l’IA.</span></label>
-    <button id="aiGenerate" class="go" type="button" disabled>Générer l’HTML animé</button>
-    <p class="ai-note">Le palier gratuit est limité et peut être suspendu lorsque le quota est atteint. Google peut utiliser les prompts et les réponses pour améliorer ses produits ; n’envoie aucune donnée personnelle, confidentielle ou sensible.</p>
+    <button id="aiGenerate" class="go" type="button">Générer l’HTML animé</button>
+    <p class="ai-note">Utilise Cloudflare Workers AI : le forfait gratuit prévoit 10 000 neurons par jour, partagés avec ton compte Cloudflare. Si le quota est atteint, réessaie le lendemain. Le brief est envoyé à Cloudflare ; n’envoie aucune donnée personnelle, confidentielle ou sensible.</p>
     <p id="aiStatus" role="status" aria-live="polite" hidden></p>
     <div class="actions" id="aiActions" hidden>
       <button class="sec" id="aiUse" type="button">Charger dans RENDRAX</button>
@@ -611,7 +610,6 @@ function setAiStatus(message, kind) {
 async function generateAnimatedHtml() {
   if (busy || aiGenerating) return setAiStatus('Attends la fin du rendu ou de la génération en cours.', 'err');
   const prompt = $('#aiPrompt').value.trim();
-  if (!$('#aiAdult').checked) return setAiStatus('Confirme que tu as 18 ans ou plus avant d’utiliser le générateur IA.', 'err');
   if (prompt.length < 5) return setAiStatus('Décris l’animation en quelques mots (5 caractères minimum).', 'err');
   if (prompt.length > 4000) return setAiStatus('La description est trop longue (4 000 caractères maximum).', 'err');
   if (!securityReady) return setAiStatus(securityMessage || 'La protection anti-robot n’est pas disponible. Réessaie plus tard.', 'err');
@@ -631,7 +629,6 @@ async function generateAnimatedHtml() {
       method: 'POST',
       body: {
         prompt,
-        adultConfirmed: $('#aiAdult').checked,
         captchaToken: token,
         style: $('#aiStyle').value,
         format: $('#aiFormat').value,
@@ -654,7 +651,7 @@ async function generateAnimatedHtml() {
     setAiStatus(error.message || 'La génération a échoué. Réessaie avec une description plus simple.', 'err');
   } finally {
     aiGenerating = false;
-    button.disabled = !$('#aiAdult').checked;
+    button.disabled = false;
     button.textContent = 'Générer l’HTML animé';
   }
 }
@@ -862,7 +859,6 @@ async function resume() {
   setBusy(false);
 }
 $('#aiGenerate').onclick = generateAnimatedHtml;
-$('#aiAdult').addEventListener('change', () => { if (!aiGenerating && !busy) $('#aiGenerate').disabled = !$('#aiAdult').checked; });
 $('#aiUse').onclick = useGeneratedHtml;
 $('#file').onchange = checkFile;
 $('#go').onclick = go;
