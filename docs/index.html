@@ -298,7 +298,7 @@ ul#list button{box-shadow:none}
         </select>
       </div>
     </div>
-    <p id="aiHelp" class="ai-note">L’IA crée un fichier HTML autonome, sans bibliothèque ni ressource distante. Décris la scène, les textes à afficher, les couleurs et les mouvements souhaités.</p>
+    <p id="aiHelp" class="ai-note">L’IA prend kidas.html comme référence visuelle (scènes, transitions et palette), mais crée une nouvelle animation autonome sans audio, sans bibliothèque et sans ressource distante.</p>
     <button id="aiGenerate" class="go" type="button">Générer l’HTML animé</button>
     <p class="ai-note">Utilise Cloudflare Workers AI : le forfait gratuit prévoit 10 000 neurons par jour, partagés avec ton compte Cloudflare. Si le quota est atteint, réessaie le lendemain. Le brief est envoyé à Cloudflare ; n’envoie aucune donnée personnelle, confidentielle ou sensible.</p>
     <p id="aiStatus" role="status" aria-live="polite" hidden></p>
@@ -547,6 +547,12 @@ function analyze(t) {
   const count = (s, sub) => s.split(sub).length - 1;
   if (t.trim().length < 20 || !/<(?:!doctype|html|head|body|script|svg|canvas|div|style)\b/i.test(t))
     return { kind: 'invalid', label: 'Ce fichier ne ressemble pas à une page HTML.' };
+  const rendraxai = /window\.__rendraxAI\s*=\s*true\b/.test(t)
+    && /window\.__rendraxSeek\s*=/.test(t)
+    && /\bconst\s+D\s*=\s*\d+(?:\.\d+)?/.test(t)
+    && /[.#]stage\s*\{[^}]*?width:\s*1080px;\s*height:\s*1920px/.test(t)
+    && !/<(?:audio|video)\b|data:audio\//i.test(t);
+  if (rendraxai) return { kind: 'rendraxai', label: 'RENDRAX IA (animation sans audio, timeline synchronisée)' };
   const kidas = count(t, 'const [t,setT]=useState(0),') === 1 && /[.#]stage\s*\{/.test(t)
     && /\bAUD\s*=\s*'data:audio\//.test(t) && /\bD\s*=\s*\d/.test(t);
   if (kidas) return { kind: 'kidas', label: 'KIDAS (React + audio intégré)' };
@@ -593,6 +599,7 @@ async function checkFile() {
   if (v.kind === 'invalid') return showVerdict(v, 'err', '✗ ' + v.label + ' Import bloqué.');
   $('#prevBtn').hidden = false;
   if (v.kind === 'generic') showVerdict(v, 'warn', '⚠ Fichier non reconnu : rendu universel en temps réel. La durée, la synchronisation et le son ne sont pas garantis.');
+  else if (v.kind === 'rendraxai') showVerdict(v, 'ok', '✓ Fichier reconnu : ' + v.label + '. Rendu image par image sans piste audio.');
   else showVerdict(v, 'ok', '✓ Fichier reconnu : ' + v.label + '. Rendu image par image avec le son, synchronisé.');
 }
 function setFile(files) {
