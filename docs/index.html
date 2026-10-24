@@ -495,6 +495,7 @@ async function initSecurity() {
     statusEl.hidden = false;
   }
   $('#go').disabled = !securityReady || busy;
+  $('#aiGenerate').disabled = !securityReady || !$('#aiAdult').checked || busy;
 }
 function captchaToken() {
   return new Promise((resolve, reject) => {
