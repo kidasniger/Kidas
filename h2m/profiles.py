@@ -8,10 +8,10 @@ from h2m.scripts_js import GENERIC_AUDIO_CAPTURE
 def _is_rendraxai(text):
     # Animation RENDRAX générée sans audio, pilotable image par image.
     return (
-        bool(re.search(r"window\\.__rendraxAI\\s*=\\s*true\\b", text))
-        and bool(re.search(r"window\\.__rendraxSeek\\s*=", text))
-        and bool(re.search(r"\\bconst\\s+D\\s*=\\s*\\d+(?:\\.\\d+)?", text))
-        and bool(re.search(r"[.#]stage\\s*\\{[^}]*?width:\\s*1080px;\\s*height:\\s*1920px", text))
+        bool(re.search(r"window\.__rendraxAI\s*=\s*true\b", text))
+        and bool(re.search(r"window\.__rendraxSeek\s*=", text))
+        and bool(re.search(r"\bconst\s+D\s*=\s*\d+(?:\.\d+)?", text))
+        and bool(re.search(r"[.#]stage\s*\{[^}]*?width:\s*1080px;\s*height:\s*1920px", text))
     )
 
 
@@ -113,7 +113,7 @@ def patch_html(text):
     if profile == "rendraxai":
         # Stoppe la boucle d'aperçu et laisse RENDRAX appeler render(t) pour chaque image.
         manual = "<script>window.__manual=true</script>"
-        m = re.search(r"<head\\b[^>]*>", text, flags=re.I)
+        m = re.search(r"<head\b[^>]*>", text, flags=re.I)
         text = text[:m.end()] + manual + text[m.end():] if m else manual + text
         return text, "rendraxai"
     if profile == "kidas":
