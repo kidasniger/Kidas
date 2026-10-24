@@ -132,15 +132,34 @@ Commence directement par <!doctype html>. Le corps doit occuper la fenêtre (100
 
   const responseBody = await upstream.json().catch(() => null);
   if (!upstream.ok || responseBody?.error) {
-    const apiStatus = String(responseBody?.error?.status || '');
-    console.warn('[RENDRAX IA] Gemini API a répondu avec le statut', upstream.status, 'code:', apiStatus || 'inconnu');
+    const apiError = responseBody?.error || {};
+    const apiStatus = String(apiError.status || '');
+    const apiMessage = typeof apiError.message === 'string'
+      ? apiError.message.replace(/[\\r\\n\\t]+/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, 220)
+      : '';
+    console.warn('[RENDRAX IA] Échec Gemini', JSON.stringify({
+      httpStatus: upstream.status,
+      status: apiStatus || 'inconnu',
+      code: apiError.code || null,
+      message: apiMessage || null
+    }));
+
     if (upstream.status === 429 || apiStatus === 'RESOURCE_EXHAUSTED') {
-      return fail(res, 429, 'Le quota gratuit de Gemini est atteint ou le service est momentanément saturé. Vérifie les limites dans Google AI Studio puis réessaie plus tard.');
+      return fail(res, 429, 'Le quota Gemini est atteint ou le service est saturé. Vérifie les limites de l’API dans Google AI Studio, puis réessaie plus tard.');
     }
     if (upstream.status === 401 || upstream.status === 403 || apiStatus === 'PERMISSION_DENIED' || apiStatus === 'UNAUTHENTICATED') {
-      return fail(res, 503, 'La clé Gemini est invalide ou le projet n’a pas accès à ce modèle. Vérifie GEMINI_API_KEY, le modèle et le quota dans Google AI Studio.');
+      return fail(res, 503, 'La clé Gemini est invalide ou ce projet n’a pas accès au modèle. Vérifie GEMINI_API_KEY, les autorisations et le quota dans Google AI Studio.');
     }
-    return fail(res, 502, 'Google AI Studio n’a pas pu produire le HTML. Réessaie avec une description plus simple.');
+    if (upstream.status === 404 || apiStatus === 'NOT_FOUND') {
+      return fail(res, 503, 'Le modèle Gemini configuré est introuvable ou indisponible. Vérifie la variable GEMINI_MODEL dans Vercel et utilise un modèle disponible dans Google AI Studio.' + (apiMessage ? ' Détail : ' + apiMessage : ''));
+    }
+    if (upstream.status === 400 || apiStatus === 'INVALID_ARGUMENT' || apiStatus === 'BAD_REQUEST') {
+      return fail(res, 502, 'Google a rejeté la requête envoyée par RENDRAX.' + (apiMessage ? ' Détail : ' + apiMessage : '') + ' Tu peux réessayer; si le problème persiste, partage ce détail.');
+    }
+    if (upstream.status >= 500) {
+      return fail(res, 503, 'Google AI Studio rencontre un problème temporaire (HTTP ' + upstream.status + '). Réessaie dans quelques instants.');
+    }
+    return fail(res, 502, 'Google AI Studio a renvoyé une erreur HTTP ' + upstream.status + '.' + (apiStatus ? ' Code : ' + apiStatus + '.' : '') + (apiMessage ? ' Détail : ' + apiMessage : ''));
   }
 
   const candidate = responseBody?.candidates?.[0];
