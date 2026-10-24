@@ -550,7 +550,7 @@ function analyze(t) {
   const rendraxai = /window\.__rendraxAI\s*=\s*true\b/.test(t)
     && /window\.__rendraxSeek\s*=/.test(t)
     && /\bconst\s+D\s*=\s*\d+(?:\.\d+)?/.test(t)
-    && /[.#]stage\s*\{[^}]*?width:\s*1080px;\s*height:\s*1920px/.test(t)
+    && /[.#]stage\s*\{[^}]*?width:\s*(?:1080px;\s*height:\s*1920px|1920px;\s*height:\s*1080px|1080px;\s*height:\s*1080px)/.test(t)
     && !/<(?:audio|video)\b|data:audio\//i.test(t);
   if (rendraxai) return { kind: 'rendraxai', label: 'RENDRAX IA (animation sans audio, timeline synchronisée)' };
   const kidas = count(t, 'const [t,setT]=useState(0),') === 1 && /[.#]stage\s*\{/.test(t)
