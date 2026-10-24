@@ -299,8 +299,9 @@ ul#list button{box-shadow:none}
       </div>
     </div>
     <p id="aiHelp" class="ai-note">L’IA prend kidas.html comme référence visuelle (scènes, transitions et palette), mais crée une nouvelle animation autonome sans audio, sans bibliothèque et sans ressource distante.</p>
-    <button id="aiGenerate" class="go" type="button">Générer l’HTML animé</button>
-    <p class="ai-note">Génération par Gemini avec une clé créée dans Google AI Studio. Le quota gratuit dépend du modèle et de ton projet. Le brief est envoyé à Google ; avec l’offre sans frais, Google peut utiliser les entrées et réponses pour améliorer ses produits. N’envoie aucune donnée personnelle, confidentielle ou sensible.</p>
+    <label class="checkline" for="aiAdult"><input id="aiAdult" type="checkbox"><span>Je confirme avoir 18 ans ou plus et utiliser ce générateur pour un usage professionnel ou commercial.</span></label>
+    <button id="aiGenerate" class="go" type="button" disabled>Générer l’HTML animé</button>
+    <p class="ai-note">Génération par Gemini via Google AI Studio. Le quota gratuit dépend du modèle et de ton projet. Selon les conditions de Google, le service est réservé aux usages professionnels/commerciaux et aux adultes ; avec l’offre sans frais, Google peut utiliser les entrées et réponses pour améliorer ses produits et les faire examiner. N’envoie aucune donnée personnelle, confidentielle ou sensible.</p>
     <p id="aiStatus" role="status" aria-live="polite" hidden></p>
     <div class="actions" id="aiActions" hidden>
       <button class="sec" id="aiUse" type="button">Charger dans RENDRAX</button>
@@ -617,6 +618,7 @@ function setAiStatus(message, kind) {
 async function generateAnimatedHtml() {
   if (busy || aiGenerating) return setAiStatus('Attends la fin du rendu ou de la génération en cours.', 'err');
   const prompt = $('#aiPrompt').value.trim();
+  if (!$('#aiAdult').checked) return setAiStatus('Confirme les conditions d’âge et d’usage avant de générer.', 'err');
   if (prompt.length < 5) return setAiStatus('Décris l’animation en quelques mots (5 caractères minimum).', 'err');
   if (prompt.length > 4000) return setAiStatus('La description est trop longue (4 000 caractères maximum).', 'err');
   if (!securityReady) return setAiStatus(securityMessage || 'La protection anti-robot n’est pas disponible. Réessaie plus tard.', 'err');
@@ -636,6 +638,7 @@ async function generateAnimatedHtml() {
       method: 'POST',
       body: {
         prompt,
+        adultConfirmed: $('#aiAdult').checked,
         captchaToken: token,
         style: $('#aiStyle').value,
         format: $('#aiFormat').value,
@@ -658,7 +661,7 @@ async function generateAnimatedHtml() {
     setAiStatus(error.message || 'La génération a échoué. Réessaie avec une description plus simple.', 'err');
   } finally {
     aiGenerating = false;
-    button.disabled = false;
+    button.disabled = !$('#aiAdult').checked || !securityReady;
     button.textContent = 'Générer l’HTML animé';
   }
 }
@@ -866,6 +869,9 @@ async function resume() {
   setBusy(false);
 }
 $('#aiGenerate').onclick = generateAnimatedHtml;
+$('#aiAdult').addEventListener('change', () => {
+  if (!aiGenerating) $('#aiGenerate').disabled = !$('#aiAdult').checked || !securityReady || busy;
+});
 $('#aiUse').onclick = useGeneratedHtml;
 $('#file').onchange = checkFile;
 $('#go').onclick = go;
